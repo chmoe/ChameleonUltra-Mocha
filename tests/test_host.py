@@ -308,12 +308,11 @@ int main(void) {
 
     def test_shared_rf_clock_survives_hf_lf_polling(self):
         files={'rf_clock.c':(SRC/'utils/rf_clock.c').read_text(),'rf_clock.h':(SRC/'utils/rf_clock.h').read_text()}
-        files['app_error.h']=COMMON+'\n#define APP_ERROR_CHECK(x) assert((x)==0)\n'
-        files['nrf_soc.h']=COMMON+r"""
-static int requests, releases, polls; static bool on;
-static int sd_clock_hfclk_request(void) { requests++; on=true; return 0; }
-static int sd_clock_hfclk_is_running(uint32_t *v) { polls++; *v=on; return 0; }
-static int sd_clock_hfclk_release(void) { releases++; on=false; return 0; }
+        files['nrf_drv_clock.h']=COMMON+r"""
+static int requests, releases, polls, references; static bool on;
+static void nrf_drv_clock_hfclk_request(void *handler) { (void)handler; requests++; references++; on=true; }
+static bool nrf_drv_clock_hfclk_is_running(void) { polls++; return on; }
+static void nrf_drv_clock_hfclk_release(void) { assert(references>0); releases++; if (!--references) on=false; }
 """
         self.compile_run(files,r"""
 #include "rf_clock.c"
@@ -327,6 +326,16 @@ int main(void) {
  rf_clock_release(RF_CLOCK_LF); assert(releases==1);
  rf_clock_acquire(RF_CLOCK_LF); rf_clock_acquire(RF_CLOCK_HF); rf_clock_release(RF_CLOCK_LF);
  assert(on && requests==2); rf_clock_release(RF_CLOCK_HF); assert(!on && releases==2);
+ // USB detachment must not stop the oscillator while HF owns it.
+ nrf_drv_clock_hfclk_request(NULL);
+ rf_clock_acquire(RF_CLOCK_HF);
+ nrf_drv_clock_hfclk_release();
+ assert(on && references==1);
+ rf_clock_release(RF_CLOCK_HF); assert(!on && references==0);
+ // Conversely, disabling RF must retain an active USB request.
+ nrf_drv_clock_hfclk_request(NULL); rf_clock_acquire(RF_CLOCK_HF);
+ rf_clock_release(RF_CLOCK_HF); assert(on && references==1);
+ nrf_drv_clock_hfclk_release(); assert(!on && references==0);
  return 0;
 }
 """)
