@@ -250,14 +250,20 @@ static void nrfx_nfct_field_event_handler(volatile nrfx_nfct_field_state_t field
             if (m_nfct_cb.field_on)
             {
 
-                // RX is disabled below, so return to SENSE immediately. Keeping
-                // ACTIVATED for three seconds prevents a new field from starting
-                // the normal FIELD_DETECTED / RX setup sequence.
+                /*
+                 *  After thinking, since the reason why the low-power reading head cannot be successfully woken up is that the reading head sends too fast, and it takes time to wake up the NFC peripheral, it happened to miss this communication timing.
+                 *    Then we need to keep the NFC module for a period of time after waking it up for the first time. This period of time is about the time for the low-power reading head to communicate normally.
+                 *    The process of waking up the NFC module is to stabilize the peripherals and the clock, especially on the nRF52840, so we cannot change the process of waking up the presence detection event
+                 *    Assuming that the callback from the field loss event is closed as the entry point, we can pretend to turn off the NFC peripheral (only distribute the field loss event, but not close the peripheral), but actually keep the event listening for a period of time, assuming that during this time receivedto the data, we can immediately forward the event to the observer
+                 *    In order to achieve the purpose of processing data messages in a timely manner, after there is no message to process for a period of time, we can officially turn off the NFC peripherals to achieve the purpose of saving power resources.
+                 */
 #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
-                app_timer_stop(m_nfc_close_timer);
-#endif
+                nrf_nfct_int_disable(NRFX_NFCT_RX_INT_MASK | NRFX_NFCT_TX_INT_MASK);
+                app_timer_start(m_nfc_close_timer, APP_TIMER_TICKS(3000), NULL);
+#else
                 nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
                 nrf_nfct_int_disable(NRFX_NFCT_RX_INT_MASK | NRFX_NFCT_TX_INT_MASK);
+#endif
 
                 m_nfct_cb.field_on = false;
                 nfct_evt.evt_id    = NRFX_NFCT_EVT_FIELD_LOST;
