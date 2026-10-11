@@ -176,8 +176,10 @@ int main(void) {
                 depth+=(text[end]=='{')-(text[end]=='}'); end+=1
             return text[start:end]
         c=(SRC/'rgb_marquee.c').read_text()
-        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
+        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_idle','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
         self.compile_run({'common.h':COMMON}, '#include "common.h"\n'+r"""
+#define LIGHT_LEVEL_MAX 99
+#define RGB_LIST_NUM 8
 #define NRF_DRV_PWM_FLAG_LOOP 1
 #define NRF_DRV_PWM_PIN_NOT_USED 0xffffffff
 typedef void (*nrfx_pwm_handler_t)(int);
@@ -186,7 +188,11 @@ static bool m_pwm_initialized;
 static int pwm0_ins, seq, timer_value, color_value, starts;
 static int *timer=&timer_value;
 static bool g_usb_led_marquee_enable=true;
-static uint8_t rgb_marquee_usb_idle_step, rgb_marquee_usb_open_step;
+static uint8_t rgb_marquee_usb_idle_step, rgb_marquee_usb_open_step, rgb_marquee_usb_idle_color;
+static unsigned int cleared;
+static void nrf_gpio_pin_clear(uint32_t p) { cleared |= 1u<<p; }
+static int rand(void) { return 1; }
+static uint16_t get_pwmduty(uint8_t level) { return 1000-level*10; }
 static struct {uint16_t channel_0,channel_1,channel_2,channel_3;} pwm_sequ_val;
 static struct {uint32_t output_pins[4];} pwm_config;
 static uint32_t pins[]={0,1,2,3,4,5,6,7}, reverse[]={7,6,5,4,3,2,1,0};
@@ -212,6 +218,24 @@ int main(void) {
  int previous=starts; timer_value=99; rgb_marquee_usb_open_symmetric(4); assert(starts==previous);
  timer_value=100; rgb_marquee_usb_open_symmetric(4); rgb_marquee_usb_open_symmetric(4); assert(starts==previous+1);
  g_usb_led_marquee_enable=false; rgb_marquee_usb_open_symmetric(4); assert(rgb_marquee_usb_open_step==0);
+ g_usb_led_marquee_enable=true; rgb_marquee_stop(); cleared=0;
+ rgb_marquee_usb_idle(); assert(cleared==255 && pwm_sequ_val.channel_0==1000);
+ for(int i=0;i<4;i++) assert(pwm_config.output_pins[i]==(uint32_t)(i+2));
+ int idle_starts=starts, old_color=color_value;
+ for(int i=0;i<198;i++) {
+  timer_value=25; rgb_marquee_usb_idle();
+  assert(starts==idle_starts && color_value==old_color);
+ }
+ assert(rgb_marquee_usb_idle_step==3 && pwm_sequ_val.channel_0==1000);
+ timer_value=24; rgb_marquee_usb_idle(); assert(rgb_marquee_usb_idle_step==3);
+ timer_value=25; rgb_marquee_usb_idle(); assert(!m_pwm_initialized && rgb_marquee_usb_idle_step==0);
+ rgb_marquee_usb_idle(); assert(color_value!=old_color && pwm_sequ_val.channel_0==1000);
+ assert(starts==idle_starts+1);
+ rgb_marquee_stop(); rgb_marquee_usb_open_sweep(0,0); rgb_marquee_stop();
+ cleared=0; rgb_marquee_usb_idle(); assert(cleared==255 && pwm_sequ_val.channel_0==1000);
+ for(int i=0;i<4;i++) assert(pwm_config.output_pins[i]==(uint32_t)(i+2));
+ g_usb_led_marquee_enable=false; rgb_marquee_usb_idle(); assert(!m_pwm_initialized);
+
  return 0;
 }
 """)
