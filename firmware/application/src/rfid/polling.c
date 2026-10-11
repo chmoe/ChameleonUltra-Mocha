@@ -10,7 +10,6 @@
 APP_TIMER_DEF(m_polling_timer);
 
 #define POLLING_HF_QUIET_MS 50
-#define POLLING_FIELD_LOST_MS 100
 
 static volatile bool m_polling_pending;
 static bool m_polling_running;
@@ -18,8 +17,6 @@ static volatile uint32_t m_last_reader_activity;
 static volatile bool m_hf_seen;
 static volatile bool m_hf_locked;
 static bool m_session_hf;
-static bool m_loss_pending;
-static uint32_t m_loss_since;
 static bool m_polling_active;      // cycling session in progress
 static uint8_t m_original_slot;    // slot to restore when the reader leaves
 
@@ -50,8 +47,6 @@ void polling_stop(void) {
     m_polling_pending = false;
     m_polling_running = false;
     m_polling_active = false;
-    m_loss_pending = false;
-    m_hf_locked = false;
     lf_polling_resume();
 }
 
@@ -61,8 +56,7 @@ bool polling_is_running(void) {
 
 void polling_note_hf_field(bool present) {
     m_hf_seen = present;
-    // Keep a selected transaction locked across brief reader field gaps.
-    // The main loop releases it only after confirmed session loss.
+    if (!present) m_hf_locked = false;
 }
 
 void polling_lock_hf_transaction(void) { m_hf_locked = true; }
@@ -96,8 +90,6 @@ void polling_process(void) {
     if (!m_polling_running) return;
     if (!settings_get_polling_enable()) { polling_stop(); return; }
     if (get_device_mode() != DEVICE_MODE_TAG) {
-        m_hf_locked = false;
-        m_loss_pending = false;
         m_polling_active = false;
         m_polling_pending = false;
         lf_polling_resume();
@@ -105,7 +97,6 @@ void polling_process(void) {
     } // emulation mode only
 
     if (polling_reader_present()) {
-        m_loss_pending = false;
         if (!m_polling_active) {
             // Reader arrived: start a cycling session from the current slot.
             m_session_hf = nfc_tag_14a_field_present();
@@ -143,14 +134,6 @@ void polling_process(void) {
     } else {
         m_polling_pending = false;
         if (m_polling_active) {
-            if (!m_loss_pending) {
-                m_loss_pending = true;
-                m_loss_since = app_timer_cnt_get();
-                return;
-            }
-            if (app_timer_cnt_diff_compute(app_timer_cnt_get(), m_loss_since)
-                    < APP_TIMER_TICKS(POLLING_FIELD_LOST_MS)) return;
-            m_loss_pending = false;
             // Reader left: stop cycling and restore the original slot.
             m_hf_locked = false;
             m_hf_seen = false;
@@ -162,9 +145,6 @@ void polling_process(void) {
 }
 
 void polling_forget_session(void) {
-    m_hf_locked = false;
-    m_hf_seen = false;
-    m_loss_pending = false;
     m_polling_active = false;
     m_polling_pending = false;
     lf_polling_resume();
