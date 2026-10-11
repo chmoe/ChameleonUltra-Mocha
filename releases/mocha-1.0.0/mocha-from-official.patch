@@ -1,0 +1,2173 @@
+diff --git a/README_MOCHA.md b/README_MOCHA.md
+new file mode 100644
+index 0000000..e048c60
+--- /dev/null
++++ b/README_MOCHA.md
+@@ -0,0 +1,80 @@
++# Mocha 1.0.0 — Chameleon Ultra
++
++这是可构建的官方最新固件移植版本，保留官方 Ultralight C / 3DES、SEOS 和新 LF 协议源码。只为 **Ultra** 构建；未刷入设备、未访问串口、未写卡数据、未发布或推送。
++
++## 固定来源与许可证
++
++- 官方基线：`5c99d4a39b424cc67ae82bbcfc8ba5ec8f69bf9c`，2026-10-11 通过官方 main fetch 核对。
++- [官方仓库](https://github.com/RfidResearchGroup/ChameleonUltra)。
++- Mazha 参考：`1f44d9a4c66258f2ef16cb90b5262a9d30b0ad98`，通过其 main 的 ls-remote 核对。
++- [Mazha 来源](https://github.com/Mazha0309/ChameleonUltra-mazha0309)，自定义改动起点 `1c9e8e8`，017 发布包提交 `6268247`。
++- 分支 `codex/mocha`。保留原 AUTHORS、GPLv3 LICENSE、Nordic SDK 和第三方许可证。Mocha 改动及控制工具按 GPLv3 提供；SDK 等仍遵守各自许可证。
++- `dist/build-info.json` 记录最终源码提交、工具版本和产物校验和。`dist/mocha-source.tar.gz` 为对应源码，`dist/mocha-from-official.patch` 为相对固定官方基线的补丁。
++
++## 功能和实际行为
++
++- 16 个槽；9–16 初始禁用，保留 1–8 的配置和独立卡数据记录 ID。16 槽返回已扩展；附带原 CLI 的槽枚举和名称解析也支持 16 槽。官方 GUI 仍可能只显示 8 槽。
++- 8 颗灯：灯位为 `(slot-1) % 8`；1–8 的双频/HF/LF 为红/绿/蓝，9–16 对应黄/青/品红。USB、开关机、切槽统一灯位和显示色。
++- 轮询默认关闭；启用、间隔 100–5000ms、跳过掩码、A+B 重启开关均可持久化。
++- 仅模拟模式轮询。场到达时记录原槽并重新开始间隔计时；场离开后恢复原槽。手动切槽取消旧会话；关闭轮询或转读卡模式会结束会话并保留当前槽。
++- HF 使用 Nordic NFCT 的 presence/lock 场状态，不再以 500ms 无帧推断离开。最近 50ms 有 HF 帧时推迟切换；最终 SELECT 或进入 ACTIVE/PROPRIETARY 后锁定当前槽，直到场消失。检查与关闭 NFCT 放在短临界区，避免 SELECT 与切槽检查之间的竞争。
++- **SELECT/ACTIVE 不是门禁放行信号**：即使认证或门禁判断失败，本次持续场也保持该槽；移开再贴会重新开始。不存在可靠的“刷卡成功后锁定”检测。
++- LF 使用模拟模块在停止调制、排空后采样的读头存在状态。轮询请求等待完整的有限广播 burst 结束，之后才切换；实际切换间隔可能大于设置值。没有 LF 读头成功反馈。
++- 候选槽必须启用当前会话的感应类型，且没有跳过位：HF 会话不会切到纯 LF 槽，LF 会话不会切到纯 HF 槽。初始槽未启用某感应类型时不会通过该模块启动该类型的会话。并发 HF 场会阻止 LF 轮询，防止切断 HF 事务。
++- RF 轮询用即时灯位反馈，避免阻塞扫灯；手动切槽保留淡出旧槽颜色、淡入新槽颜色。所有槽反馈先停止共享 PWM，并重置 USB 状态机；USB 重启时重置本地步序。没有启用高半区闪烁计时器。
++- BLE 连接本身不启动 USB 跑马灯。USB 供电且串口关闭为充电动画；串口打开为 80ms 扫灯或 100ms 对称动画。保留官方按键/HF 活动抑制 USB 动画的规则。
++- 按键动作 6 为开关轮询，7 为进入 DFU；A+B 长按后释放其中一键可重启，阈值仍使用官方长按阈值。双键重启保存/重启在主循环执行，避免在 timer callback 写 flash。默认 A+B 重启开启；已有短/长按映射不改变。
++
++## 配置迁移
++
++Mocha 设置存储 schema 为 `0x4D01`，16 字节：保留官方位置的长按阈值，使用原尾部空间新增独立轮询间隔。官方 GET_DEVICE_SETTINGS 的 wire 版本/布局仍为 7；Mocha 身份通过独立命令读取。
++
++- 官方 v1–v6 按原迁移步骤处理，再初始化 Mocha 设置；官方 v7 保留长按阈值，新轮询默认关闭、500ms。
++- Mazha v8（16 字节）可识别：轮询间隔、启用位、双键重启位保留；长按阈值初始化为官方默认 1000ms，无效间隔回退 500ms。
++- **Mazha v7 与官方 v7 同版本/同长度，无法可靠自动区分**；即使存在槽 v9，也可能是刷回官方后遗留。保守按官方 v7 解释，保留原字段为长按阈值，轮询关闭。已知来自 Mazha v7 时，用户需用 `interval` 恢复原间隔、`long-press 1000` 恢复官方阈值，再按需 `polling on`。不会根据数值猜来源并自动启用轮询。
++- 槽配置 Mocha v10/132 字节：官方 v8/68 字节扩展后将 9–16 清零，并将旧保留位解释为不跳过；Mazha v9/132 字节保留全部槽与 skip 位。原注释虽称 v10，Mazha 实际使用 v9，Mocha 明确升级至 v10。
++- 不修改各槽 dump/nickname 的已有 ID。修复 `fds_read_sync` 成功路径未关闭 record 的问题。
++- 刷回官方不保证理解扩展设置/槽配置；恢复必须使用备份和对应固件工具。此包不含迁移或覆盖卡数据的外部脚本。
++
++## 控制工具
++
++Python + `pyserial==3.5`。先关闭官方 GUI 和其他串口客户端。工具需要显式指定端口，在每次连接后先读取命令 1100 严格匹配 Mocha v1 身份，失败时拒绝任何写操作。macOS 使用 TIOCEXCL 防止后续串口争用。以下是用法示例，本次未执行设备操作：
++
++```sh
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 status
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 interval 500
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 skip 0x8001  # 跳过槽1、16
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 polling on
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 button a long polling
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 button b long dfu
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 ab-reboot off
++python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 select 16
++```
++
++| 编号 | Mocha 操作 | 数据 |
++|---|---|---|
++|1100|身份|返回 ASCII `Mocha/1;slots=16;base=5c99d4a`|
++|1101 / 1102|读/写轮询开关|1字节 0/1|
++|1103 / 1104|读/写间隔|2字节大端，100–5000|
++|1105 / 1106|读/写双键重启|1字节 0/1|
++|1107 / 1108|读/写跳过位|2字节大端；bit0=槽1|
++
++官方 1041/1042 保持长按阈值读/写。工具的 `polling` 只使用 1102；仅显式 `long-press` 子命令会写官方 1042。
++
++## 构建与验证（不连接设备）
++
++ARM GNU 12.2.rel1，主机 `make` / `cc`，Python 3.9 或 3.10。源码仓库内附 SDK 与官方 DFU key，无需安装 Docker或构建 bootloader。Nordic nrfutil 的完整依赖要求较旧 BLE driver；本项目仅使用其打包 API，所以以下安装不引入 BLE driver：
++
++```sh
++python3.9 -m venv .build-venv
++.build-venv/bin/pip install --no-deps nrfutil==6.1.7
++.build-venv/bin/pip install -r tools/requirements-build.txt
++GNU_INSTALL_ROOT=/path/to/arm-gnu-toolchain-12.2.rel1/bin/ \
++PYTHON="$PWD/.build-venv/bin/python" tools/build_mocha.sh
++```
++
++`build_mocha.sh` 只清理/构建 application，运行主机测试并生成、验证 DFU。输出在 `dist/`。application version=1、hardware=0、SoftDevice requirement=0x0100，与官方 Ultra 包规则一致。源码目录若无 `.git`，构建时请设置 `MOCHA_SOURCE_REV=<build-info中的源码commit前7位>` 再运行构建脚本；归档恢复 Git 后则自动生成。ECDSA 签名含随机量，重建 ZIP 的 SHA256 可不同，固件 BIN 应一致。
++
++测试编译实际设置与轮询源码，对官方/Mazha 迁移、持久化错误、间隔边界、无场、skip、16 槽跨半区、HF quiet/事务锁、LF burst 边界、手动取消、读卡模式、计时器回绕进行模拟；USB 测试编译实际动画函数核对 80/100ms 与 PWM 重置后的颜色、方向、步序；CLI 测试验证身份不符时只发送读身份命令。DFU 验证检查 manifest、镜像哈希、签名、硬件和 SD 条件及 Mocha 标识。
++
++**验证边界**：已编译并做主机模拟；尚未进行新固件的实机 DFU、USB/BLE 灯光、持续场、HF/LF 门禁、认证/写卡事务和断电恢复测试。主机模拟不等于硬件验证。授权刷机后应先复核现有备份，再逐项现场验证；本次没有刷机授权。
+diff --git a/firmware/Makefile.defs b/firmware/Makefile.defs
+index e406962..424ec27 100644
+--- a/firmware/Makefile.defs
++++ b/firmware/Makefile.defs
+@@ -26,8 +26,8 @@ CHAMELEON_LITE  := lite
+ CURRENT_DEVICE_TYPE ?= ${CHAMELEON_ULTRA}
+ 
+ # Versioning information
+-GIT_VERSION := $(shell git describe --abbrev=7 --dirty --always --tags --match "v*.*")
+-APP_FW_SEMVER := $(subst v,,$(shell git describe --tags --abbrev=0 --match "v*.*"))
++GIT_VERSION := Mocha-1.0.0-$(shell git rev-parse --short=7 HEAD)
++APP_FW_SEMVER := $(subst v,,$(shell git describe --tags --abbrev=0 --match "v*.*" 2>/dev/null || echo v2.2.0))
+ APP_FW_VER_MAJOR := $(word 1,$(subst ., ,$(APP_FW_SEMVER)))
+ APP_FW_VER_MINOR := $(word 2,$(subst ., ,$(APP_FW_SEMVER)))
+ 
+diff --git a/firmware/application/Makefile b/firmware/application/Makefile
+index 023f164..370a6e4 100644
+--- a/firmware/application/Makefile
++++ b/firmware/application/Makefile
+@@ -25,6 +25,7 @@ SRC_FILES += \
+   $(PROJ_DIR)/rfid/mf1_crapto1.c \
+   $(PROJ_DIR)/rfid/mf1_crypto1.c \
+   $(PROJ_DIR)/rfid/parity.c \
++  $(PROJ_DIR)/rfid/polling.c \
+   $(PROJ_DIR)/rfid/nfctag/tag_emulation.c \
+   $(PROJ_DIR)/rfid/nfctag/tag_persistence.c \
+   $(PROJ_DIR)/rfid/nfctag/hf/crypto1_helper.c \
+diff --git a/firmware/application/src/app_cmd.c b/firmware/application/src/app_cmd.c
+index 93db070..aacb6da 100644
+--- a/firmware/application/src/app_cmd.c
++++ b/firmware/application/src/app_cmd.c
+@@ -14,6 +14,7 @@
+ #include "settings.h"
+ #include "delayed_reset.h"
+ #include "netdata.h"
++#include "polling.h"
+ #if defined(PROJECT_CHAMELEON_ULTRA)
+ #include "bsp_wdt.h"
+ #include "lf_reader_generic.h"
+@@ -39,6 +40,7 @@ NRF_LOG_MODULE_REGISTER();
+ 
+ 
+ static void change_slot_auto(uint8_t slot_new) {
++    polling_forget_session();
+     uint8_t slot_now = tag_emulation_get_slot();
+     device_mode_t mode = get_device_mode();
+     tag_emulation_change_slot(slot_new, mode != DEVICE_MODE_READER);
+@@ -144,7 +146,7 @@ static data_frame_tx_t *cmd_processor_reset_settings(uint16_t cmd, uint16_t stat
+ 
+ static data_frame_tx_t *cmd_processor_get_device_settings(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+     uint8_t settings[7 + BLE_PAIRING_KEY_LEN] = {};
+-    settings[0] = SETTINGS_CURRENT_VERSION; // current version
++    settings[0] = 7; // official wire layout; Mocha FDS schema is independent
+     settings[1] = settings_get_animation_config(); // animation mode
+     settings[2] = settings_get_button_press_config('A'); // short A button press mode
+     settings[3] = settings_get_button_press_config('B'); // short B button press mode
+@@ -187,7 +189,7 @@ static data_frame_tx_t *cmd_processor_get_button_press_config(uint16_t cmd, uint
+ }
+ 
+ static data_frame_tx_t *cmd_processor_set_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+-    if ((length != 2) || (!is_settings_button_type_valid(data[0]))) {
++    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonEnterDfuMode) {
+         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+     }
+     settings_set_button_press_config(data[0], data[1]);
+@@ -203,7 +205,7 @@ static data_frame_tx_t *cmd_processor_get_long_button_press_config(uint16_t cmd,
+ }
+ 
+ static data_frame_tx_t *cmd_processor_set_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+-    if ((length != 2) || (!is_settings_button_type_valid(data[0]))) {
++    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonEnterDfuMode) {
+         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+     }
+     settings_set_long_button_press_config(data[0], data[1]);
+@@ -223,6 +225,84 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
+     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
+ }
+ 
++static data_frame_tx_t *cmd_processor_get_polling_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    uint8_t payload = settings_get_polling_enable() ? 1 : 0;
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), &payload);
++}
++
++static data_frame_tx_t *cmd_processor_set_polling_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    if (length != 1 || data[0] > 1) {
++        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    }
++    settings_set_polling_enable(data[0] == 1);
++    uint8_t saved = settings_save_config();
++    if (data[0] == 1) {
++        polling_start();
++    } else {
++        polling_stop();
++    }
++    return data_frame_make(cmd, saved, 0, NULL);
++}
++
++static data_frame_tx_t *cmd_processor_get_polling_interval(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    uint8_t payload[2];
++    uint16_t interval = settings_get_polling_interval_ms();
++    payload[0] = (uint8_t)(interval >> 8);
++    payload[1] = (uint8_t)(interval & 0xFF);
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), payload);
++}
++
++static data_frame_tx_t *cmd_processor_set_polling_interval(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    if (length != 2) {
++        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    }
++    uint16_t interval = ((uint16_t)data[0] << 8) | data[1];
++    if (interval < 100 || interval > 5000) {
++        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    }
++    settings_set_polling_interval_ms(interval);
++    uint8_t saved = settings_save_config();
++    polling_start();   // restart with new interval
++    return data_frame_make(cmd, saved, 0, NULL);
++}
++
++static data_frame_tx_t *cmd_processor_get_ab_reboot_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    uint8_t payload = settings_get_ab_reboot_enable() ? 1 : 0;
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), &payload);
++}
++
++static data_frame_tx_t *cmd_processor_get_slot_polling_skip(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    uint8_t payload[2];
++    uint16_t mask = 0;
++    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
++        if (tag_emulation_slot_polling_skip(slot)) {
++            mask |= (1 << slot);
++        }
++    }
++    payload[0] = (uint8_t)(mask >> 8);
++    payload[1] = (uint8_t)(mask & 0xFF);
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), payload);
++}
++
++static data_frame_tx_t *cmd_processor_set_slot_polling_skip(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    if (length != 2) {
++        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    }
++    uint16_t mask = ((uint16_t)data[0] << 8) | data[1];
++    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
++        tag_emulation_slot_set_polling_skip(slot, ((mask >> slot) & 1) != 0);
++    }
++    return data_frame_make(cmd, tag_emulation_save_config(), 0, NULL);
++}
++
++static data_frame_tx_t *cmd_processor_set_ab_reboot_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    if (length != 1 || data[0] > 1) {
++        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    }
++    settings_set_ab_reboot_enable(data[0] == 1);
++    return data_frame_make(cmd, settings_save_config(), 0, NULL);
++}
++
+ static data_frame_tx_t *cmd_processor_get_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+     uint8_t is_enable = settings_get_ble_pairing_enable();
+     return data_frame_make(cmd, STATUS_SUCCESS, 1, &is_enable);
+@@ -1202,10 +1282,10 @@ static data_frame_tx_t *cmd_processor_get_slot_info(uint16_t cmd, uint16_t statu
+     struct {
+         uint16_t hf_tag_type;
+         uint16_t lf_tag_type;
+-    } PACKED payload[8];
++    } PACKED payload[TAG_MAX_SLOT_NUM];
+ 
+     tag_slot_specific_type_t tag_types;
+-    for (uint8_t slot = 0; slot < 8; slot++) {
++    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
+         tag_emulation_get_specific_types_by_slot(slot, &tag_types);
+         payload[slot].hf_tag_type = U16HTONS(tag_types.tag_hf);
+         payload[slot].lf_tag_type = U16HTONS(tag_types.tag_lf);
+@@ -2004,8 +2084,8 @@ static data_frame_tx_t *cmd_processor_get_enabled_slots(uint16_t cmd, uint16_t s
+     struct {
+         uint8_t enabled_hf;
+         uint8_t enabled_lf;
+-    } PACKED payload[8];
+-    for (uint8_t slot = 0; slot < 8; slot++) {
++    } PACKED payload[TAG_MAX_SLOT_NUM];
++    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
+         payload[slot].enabled_hf = is_slot_enabled(slot, TAG_SENSE_HF);
+         payload[slot].enabled_lf = is_slot_enabled(slot, TAG_SENSE_LF);
+     }
+@@ -3197,7 +3277,23 @@ static data_frame_tx_t *cmd_processor_hf14a_4_debug_counters(uint16_t cmd, uint1
+     return data_frame_make(cmd, STATUS_SUCCESS, 4, buf);
+ }
+ #endif
++static data_frame_tx_t *cmd_processor_get_mocha_identity(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    static const uint8_t identity[] = "Mocha/1;slots=16;base=5c99d4a";
++    if (length != 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(identity) - 1, (uint8_t *)identity);
++}
++
+ static cmd_data_map_t m_data_cmd_map[] = {
++    { DATA_CMD_GET_MOCHA_IDENTITY, NULL, cmd_processor_get_mocha_identity, NULL },
++    { DATA_CMD_GET_POLLING_ENABLE, NULL, cmd_processor_get_polling_enable, NULL },
++    { DATA_CMD_SET_POLLING_ENABLE, NULL, cmd_processor_set_polling_enable, NULL },
++    { DATA_CMD_GET_POLLING_INTERVAL, NULL, cmd_processor_get_polling_interval, NULL },
++    { DATA_CMD_SET_POLLING_INTERVAL, NULL, cmd_processor_set_polling_interval, NULL },
++    { DATA_CMD_GET_AB_REBOOT_ENABLE, NULL, cmd_processor_get_ab_reboot_enable, NULL },
++    { DATA_CMD_SET_AB_REBOOT_ENABLE, NULL, cmd_processor_set_ab_reboot_enable, NULL },
++    { DATA_CMD_GET_SLOT_POLLING_SKIP, NULL, cmd_processor_get_slot_polling_skip, NULL },
++    { DATA_CMD_SET_SLOT_POLLING_SKIP, NULL, cmd_processor_set_slot_polling_skip, NULL },
++
+     {    DATA_CMD_GET_APP_VERSION,              NULL,                        cmd_processor_get_app_version,               NULL                   },
+     {    DATA_CMD_CHANGE_DEVICE_MODE,           NULL,                        cmd_processor_change_device_mode,            NULL                   },
+     {    DATA_CMD_GET_DEVICE_MODE,              NULL,                        cmd_processor_get_device_mode,               NULL                   },
+diff --git a/firmware/application/src/app_main.c b/firmware/application/src/app_main.c
+index fd4e9dc..41480bb 100644
+--- a/firmware/application/src/app_main.c
++++ b/firmware/application/src/app_main.c
+@@ -15,6 +15,9 @@
+ #include "nfc_mf1.h"         // for nfc_tag_mf1_prng_seed
+ #include "nrf_power.h"
+ #include "nrf_pwr_mgmt.h"
++#define BOOTLOADER_DFU_GPREGRET_MASK            (0xB0)
++#define BOOTLOADER_DFU_START_BIT_MASK           (0x01)
++#define BOOTLOADER_DFU_START    (BOOTLOADER_DFU_GPREGRET_MASK | BOOTLOADER_DFU_START_BIT_MASK)
+ #include "nrfx_nfct.h"
+ #include "nrfx_power.h"
+ #include "nrf_drv_lpcomp.h"
+@@ -34,6 +37,7 @@ NRF_LOG_MODULE_REGISTER();
+ #include "dataframe.h"
+ #include "fds_util.h"
+ #include "hex_utils.h"
++#include "polling.h"
+ #include "rfid_main.h"
+ #include "syssleep.h"
+ #include "tag_emulation.h"
+@@ -197,6 +201,8 @@ static void button_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t a
+  * @param None
+  * @return None
+  */
++static volatile bool m_ab_reboot_pending;
++
+ static void timer_button_event_handle(void *arg) {
+     // if button press during shutdown, it's only to wake up quickly
+     if (m_system_off_processing) {
+@@ -257,6 +263,15 @@ static void timer_button_event_handle(void *arg) {
+                 m_is_btn_long_press = is_long_press;
+             }
+         }
++
++        // A+B held together (>1s) triggers a soft reboot (configurable).
++        if (is_long_press && settings_get_ab_reboot_enable()) {
++            if ((pin == BUTTON_1 && m_is_a_btn_press) ||
++                (pin == BUTTON_2 && m_is_b_btn_press)) {
++                NRF_LOG_INFO("A+B long press: soft reboot");
++                m_ab_reboot_pending = true;
++            }
++        }
+     }
+ }
+ 
+@@ -290,6 +305,7 @@ static void system_off_enter(void) {
+     m_system_off_processing = true;
+     // Save tag data
+     tag_emulation_save();
++    polling_stop();
+ 
+     if (g_is_low_battery_shutdown) {
+         // Don't create too complex animations, just blink LED1 three times.
+@@ -310,8 +326,8 @@ static void system_off_enter(void) {
+         // Power off animation
+         uint8_t animation_config = settings_get_animation_config();
+         uint8_t slot = tag_emulation_get_slot();
+-        uint8_t dir = slot > 3 ? 1 : 0;
+-        uint8_t color = get_color_by_slot(slot);
++        uint8_t dir = (slot % 8) > 3 ? 1 : 0;
++        uint8_t color = get_slot_display_color(slot);
+         if (m_reset_source & (NRF_POWER_RESETREAS_NFC_MASK | NRF_POWER_RESETREAS_LPCOMP_MASK)) {
+             if (m_reset_source & NRF_POWER_RESETREAS_NFC_MASK) {
+                 color = 1;
+@@ -448,6 +464,7 @@ static void check_wakeup_src(void) {
+     sd_power_gpregret_clr(1, GPREGRET_CLEAR_VALUE_DEFAULT);
+ 
+ 
++
+     /*
+      * Note: The hibernation described below is deep hibernation, stopping any non-wakeup source peripherals and stopping the CPU to achieve the lowest power consumption
+      *
+@@ -460,8 +477,8 @@ static void check_wakeup_src(void) {
+      */
+ 
+     uint8_t slot = tag_emulation_get_slot();
+-    uint8_t dir = slot > 3 ? 1 : 0;
+-    uint8_t color = get_color_by_slot(slot);
++    uint8_t dir = (slot % 8) > 3 ? 1 : 0;
++    uint8_t color = get_slot_display_color(slot);
+ 
+     if (m_reset_source & NRF_POWER_RESETREAS_OFF_MASK) {
+         NRF_LOG_INFO("WakeUp from button");
+@@ -472,9 +489,9 @@ static void check_wakeup_src(void) {
+         if (animation_config == SettingsAnimationModeFull) {
+             rgb_marquee_sweep_to(color, !dir, 11);
+             rgb_marquee_sweep_to(color, dir, 11);
+-            rgb_marquee_sweep_to(color, !dir, dir ? slot : 7 - slot);
++            rgb_marquee_sweep_to(color, !dir, dir ? (slot % 8) : 7 - (slot % 8));
+         } else if (animation_config == SettingsAnimationModeMinimal) {
+-            rgb_marquee_sweep_to(color, !dir, dir ? slot : 7 - slot);
++            rgb_marquee_sweep_to(color, !dir, dir ? (slot % 8) : 7 - (slot % 8));
+         } else if (animation_config == SettingsAnimationModeSymmetric) {
+             rgb_marquee_symmetric_out(color, slot);
+         } else {
+@@ -483,6 +500,7 @@ static void check_wakeup_src(void) {
+ 
+         // The indicator of the current card slot lights up at the end of the animation
+         light_up_by_slot();
++        polling_start();
+ 
+         // If no operation follows, wait for the configured timeout and then deep hibernate
+         sleep_timer_start(settings_get_sleep_timeout());
+@@ -509,13 +527,14 @@ static void check_wakeup_src(void) {
+         uint8_t animation_config = settings_get_animation_config();
+         if (animation_config == SettingsAnimationModeFull) {
+             // In the case of field wake-up, only one round of RGB is swept as the power-on animation
+-            rgb_marquee_sweep_to(color, !dir, dir ? slot : 7 - slot);
++            rgb_marquee_sweep_to(color, !dir, dir ? (slot % 8) : 7 - (slot % 8));
+         } else if (animation_config == SettingsAnimationModeSymmetric) {
+             rgb_marquee_symmetric_out(color, slot);
+         } else {
+             set_slot_light_color(color);
+         }
+         light_up_by_slot();
++        polling_start();
+ 
+         // We can only run tag emulation at field wakeup source.
+         sleep_timer_start(SLEEP_DELAY_MS_FIELD_WAKEUP);
+@@ -529,6 +548,7 @@ static void check_wakeup_src(void) {
+ 
+         // Start Bluetooth radio with USB plugged in, no deep hibernation required
+         advertising_start(false);
++        polling_start();
+     } else {
+         NRF_LOG_INFO("First power system");
+ 
+@@ -559,6 +579,7 @@ static void check_wakeup_src(void) {
+         // Show RGB for slot.
+         set_slot_light_color(color);
+         light_up_by_slot();
++        polling_start();
+ 
+         // If the USB is plugged in when first powered up, we can do something accordingly
+         if (nrfx_power_usbstatus_get() != NRFX_POWER_USB_STATE_DISCONNECTED) {
+@@ -584,6 +605,7 @@ static void cycle_slot(bool dec) {
+         slot_new = tag_emulation_slot_find_next(slot_now);
+     }
+     // Update status only if the new card slot switch is valid
++    polling_forget_session();
+     tag_emulation_change_slot(slot_new, true); // Tell the analog card module that we need to switch card slots
+     // Turn off the LEDs in case we were showing the battery status
+     rgb_marquee_stop();
+@@ -593,6 +615,8 @@ static void cycle_slot(bool dec) {
+     }
+     // Go back to the color corresponding to the field enablement type
+     apply_slot_change(slot_now, slot_new);
++    // Manual slot switch resets the polling cycle
++    polling_start();
+ }
+ 
+ static void show_battery(void) {
+@@ -630,7 +654,7 @@ static void show_battery(void) {
+ static void offline_status_blink_color(uint8_t blink_color) {
+     uint8_t slot = tag_emulation_get_slot();
+ 
+-    uint8_t color = get_color_by_slot(slot);
++    uint8_t color = get_slot_display_color(slot);
+ 
+     uint32_t *p_led_array = hw_get_led_array();
+ 
+@@ -908,6 +932,43 @@ static void run_button_function_by_settings(settings_button_function_t sbf) {
+             show_battery();
+             break;
+ 
++        case SettingsButtonTogglePolling:
++            rgb_marquee_stop();
++            settings_set_polling_enable(!settings_get_polling_enable());
++            settings_save_config();
++            if (settings_get_polling_enable()) {
++                NRF_LOG_INFO("Polling enabled by button press");
++                polling_start();
++                // Feedback: all LEDs flash green
++                set_slot_light_color(RGB_GREEN);
++                uint32_t *led_pins = hw_get_led_array();
++                for (uint8_t i = 0; i < RGB_LIST_NUM; i++) {
++                    nrf_gpio_pin_set(led_pins[i]);
++                }
++                bsp_delay_ms(300);
++            } else {
++                NRF_LOG_INFO("Polling disabled by button press");
++                polling_stop();
++                // Feedback: all LEDs flash red
++                set_slot_light_color(RGB_RED);
++                uint32_t *led_pins = hw_get_led_array();
++                for (uint8_t i = 0; i < RGB_LIST_NUM; i++) {
++                    nrf_gpio_pin_set(led_pins[i]);
++                }
++                bsp_delay_ms(300);
++            }
++            light_up_by_slot();
++            break;
++
++        case SettingsButtonEnterDfuMode:
++            NRF_LOG_INFO("Entering DFU mode by button press");
++            settings_save_config();
++            tag_emulation_save();
++            sd_power_gpregret_clr(0, 0xffffffff);
++            sd_power_gpregret_set(0, BOOTLOADER_DFU_START);
++            nrf_pwr_mgmt_shutdown(NRF_PWR_MGMT_SHUTDOWN_GOTO_DFU);
++            break;
++
+         default:
+             NRF_LOG_ERROR("Unsupported button function");
+             break;
+@@ -948,9 +1009,15 @@ static void button_press_process(void) {
+ extern bool g_usb_port_opened;
+ static void blink_usb_led_status(void) {
+     uint8_t slot = tag_emulation_get_slot();
+-    uint8_t color = get_color_by_slot(slot);
+-    uint8_t dir = slot > 3 ? 1 : 0;
++    uint8_t color = get_slot_display_color(slot);
++    uint8_t dir = (slot % 8) > 3 ? 1 : 0;
+     static bool is_working = false;
++    static uint8_t last_usb_mode;
++    uint8_t usb_mode = g_usb_port_opened ? 2 : 1;
++    if (usb_mode != last_usb_mode) {
++        rgb_marquee_stop();
++        last_usb_mode = usb_mode;
++    }
+     if (nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED) {
+         if (is_working) {
+             rgb_marquee_stop();
+@@ -1019,6 +1086,7 @@ int main(void) {
+     button_init();            // Button initialization for handling business logic
+     sleep_timer_init();       // Soft timer initialization for hibernation
+     tag_emulation_init();     // Analog card initialization
++    polling_init();           // Fixed-delay slot polling timer
+     rgb_marquee_init();       // Light effect initialization
+ 
+     ble_passkey_init();       // init ble connect key.
+@@ -1040,6 +1108,13 @@ int main(void) {
+         lesc_event_process();
+         // Button event process
+         button_press_process();
++        // Fixed-delay slot polling process
++        if (m_ab_reboot_pending) {
++            settings_save_config();
++            tag_emulation_save();
++            nrf_pwr_mgmt_shutdown(NRF_PWR_MGMT_SHUTDOWN_RESET);
++        }
++        polling_process();
+ 
+ #if defined(PROJECT_CHAMELEON_ULTRA)
+         // Field generator rainbow animation
+diff --git a/firmware/application/src/data_cmd.h b/firmware/application/src/data_cmd.h
+index 5a33b66..dc78090 100644
+--- a/firmware/application/src/data_cmd.h
++++ b/firmware/application/src/data_cmd.h
+@@ -214,3 +214,14 @@
+ #define DATA_CMD_LF_SNIFF                       (3031)
+ 
+ #endif
++
++// Mocha extension protocol v1. Official 1041/1042 remain untouched.
++#define DATA_CMD_GET_MOCHA_IDENTITY (1100)
++#define DATA_CMD_GET_POLLING_ENABLE (1101)
++#define DATA_CMD_SET_POLLING_ENABLE (1102)
++#define DATA_CMD_GET_POLLING_INTERVAL (1103)
++#define DATA_CMD_SET_POLLING_INTERVAL (1104)
++#define DATA_CMD_GET_AB_REBOOT_ENABLE (1105)
++#define DATA_CMD_SET_AB_REBOOT_ENABLE (1106)
++#define DATA_CMD_GET_SLOT_POLLING_SKIP (1107)
++#define DATA_CMD_SET_SLOT_POLLING_SKIP (1108)
+diff --git a/firmware/application/src/rfid/nfctag/hf/nfc_14a.c b/firmware/application/src/rfid/nfctag/hf/nfc_14a.c
+index 1ed7846..0b6eb57 100644
+--- a/firmware/application/src/rfid/nfctag/hf/nfc_14a.c
++++ b/firmware/application/src/rfid/nfctag/hf/nfc_14a.c
+@@ -16,6 +16,8 @@ NRF_LOG_MODULE_REGISTER();
+ #include "rfid_main.h"
+ #include "syssleep.h"
+ #include "tag_emulation.h"
++#include "polling.h"
++#include "app_util_platform.h"
+ 
+ 
+ #if NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
+@@ -365,6 +367,8 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
+     if (m_sniff_cb != NULL) {
+         m_sniff_cb(p_data, szDataBits);
+     }
++    // Any frame from the reader means the reader field is present.
++    polling_note_reader_activity();
+     // Manually draw frame, separate data and strange school inspection
+ #if !NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
+     if (szDataBits >= 9) {
+@@ -529,6 +533,7 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
+                     // NRF_LOG_INFO("SELECT CLx %02x%02x%02x%02x received\n", p_data[2], p_data[3], p_data[4], p_data[5]);
+                     if (cl_finished) {
+                         // NRF_LOG_INFO("[MFEMUL_SELECT] m_tag_state_14a = MFEMUL_WORK");
++                        polling_lock_hf_transaction();
+                         m_tag_state_14a = NFC_TAG_STATE_14A_ACTIVE;
+                         if (!m_sniff_passive) {
+                             nfc_tag_14a_tx_bytes(auto_coll_res->sak, 1, true);
+@@ -651,12 +656,14 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+     // Select action to process.
+     switch (p_event->evt_id) {
+         case NRFX_NFCT_EVT_FIELD_DETECTED: {
++            polling_note_hf_field(true);
+             sleep_timer_stop();
+ 
+             g_is_tag_emulating = true;
+             g_usb_led_marquee_enable = false;
+ 
+-            set_slot_light_color(RGB_GREEN);
++            // Keep the slot display color (mixed for high-half slots) during
++            // the read; TAG_FIELD_LED indicates the field activity.
+             TAG_FIELD_LED_ON()
+ 
+             NRF_LOG_INFO("HF FIELD DETECTED");
+@@ -676,6 +683,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+             break;
+         }
+         case NRFX_NFCT_EVT_FIELD_LOST: {
++            polling_note_hf_field(false);
+             g_is_tag_emulating = false;
+             // call sleep_timer_start *after* unsetting g_is_tag_emulating
+             sleep_timer_start(SLEEP_DELAY_MS_FIELD_NFC_LOST);
+@@ -712,7 +720,6 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+             break;
+         }
+         case NRFX_NFCT_EVT_RX_FRAMEEND: {
+-            set_slot_light_color(RGB_GREEN);
+             TAG_FIELD_LED_ON()
+ 
+             // NRF_LOG_INFO("RX FRAMEEND.\n");
+@@ -761,6 +768,8 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+  * @param state New state
+  */
+ void nfc_tag_14a_set_state(nfc_tag_14a_state_t state) {
++    if (state == NFC_TAG_STATE_14A_ACTIVE || state == NFC_TAG_STATE_14A_PROPRIETARY)
++        polling_lock_hf_transaction();
+     m_tag_state_14a = state;
+ }
+ 
+@@ -822,3 +831,19 @@ void nfc_tag_14a_set_reset_enable(bool enable) {
+ bool nfc_tag_14a_is_reset_enable() {
+     return reset_if_field_lost;
+ }
++
++bool nfc_tag_14a_field_present(void) {
++    // Nordic driver checks presence + lock bits to tolerate field transients.
++    return m_nfc_sense_state == NFC_SENSE_STATE_ENABLE && nrfx_nfct_field_check();
++}
++
++bool nfc_tag_14a_polling_quiesce(void) {
++    bool allowed;
++    // Close the check/disable race against RX/SELECT interrupts. No flash or
++    // animation work occurs in this short critical region.
++    CRITICAL_REGION_ENTER();
++    allowed = polling_hf_can_switch();
++    if (allowed) nfc_tag_14a_sense_switch(false);
++    CRITICAL_REGION_EXIT();
++    return allowed;
++}
+diff --git a/firmware/application/src/rfid/nfctag/hf/nfc_14a.h b/firmware/application/src/rfid/nfctag/hf/nfc_14a.h
+index fa8cb52..8085d87 100644
+--- a/firmware/application/src/rfid/nfctag/hf/nfc_14a.h
++++ b/firmware/application/src/rfid/nfctag/hf/nfc_14a.h
+@@ -143,3 +143,7 @@ void nfc_tag_14a_set_reset_enable(bool enable);
+ bool nfc_tag_14a_is_reset_enable();
+ 
+ #endif
++
++bool nfc_tag_14a_field_present(void);
++
++bool nfc_tag_14a_polling_quiesce(void);
+diff --git a/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c b/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c
+index 6994329..06bc658 100644
+--- a/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c
++++ b/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c
+@@ -39,7 +39,18 @@ static tag_specific_type_t m_tag_type = TAG_TYPE_UNDEFINED;
+ const nrfx_pwm_t m_broadcast = NRFX_PWM_INSTANCE(0);
+ const nrf_pwm_sequence_t *m_pwm_seq = NULL;
+ 
++// True while the LF emulation detects a real reader field (set in the
++// EVT_STOPPED check with antenna off + drain, cleared on field lost).
++// This is the reliable "reader present" signal for polling: sampling LPCOMP
++// directly from polling would false-positive on the device's own broadcast.
++static volatile bool m_lf_reader_present = false;
++static volatile bool m_polling_pause_requested;
++static volatile bool m_polling_paused;
++
+ static void lf_field_lost(void) {
++    m_lf_reader_present = false;
++    m_polling_pause_requested = false;
++    m_polling_paused = false;
+     // Open the incident interruption, so that the next event can be in and out normally
+     g_is_tag_emulating = false;  // Reset the flag in the emulation
+     m_is_lf_emulating = false;
+@@ -82,13 +93,15 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event) {
+     nrfx_lpcomp_disable();
+ 
+     // set the emulation status logo bit
++    m_lf_reader_present = true;
++    m_polling_pause_requested = false;
++    m_polling_paused = false;
+     m_is_lf_emulating = true;
+     g_is_tag_emulating = true;
+     // turn off USB light effect when emulating cards
+     g_usb_led_marquee_enable = false;
+ 
+     // LED status update
+-    set_slot_light_color(RGB_BLUE);
+     TAG_FIELD_LED_ON()
+ 
+     // Play a finite burst then stop — field check happens in EVT_STOPPED after
+@@ -121,6 +134,11 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
+     bsp_delay_ms(2);  // let peak detector drain: ~2 ms time constant on LF_RSSI
+     if (is_lf_field_exists()) {
+         // Field still present — play another finite burst then check again.
++        m_lf_reader_present = true;
++        if (m_polling_pause_requested) {
++            m_polling_paused = true;
++            return;
++        }
+         nrfx_pwm_simple_playback(&m_broadcast, m_pwm_seq, 10, NRFX_PWM_FLAG_STOP);
+     } else {
+         // Field gone — clean up.
+@@ -128,6 +146,10 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
+     }
+ }
+ 
++bool lf_reader_field_present(void) {
++    return m_lf_reader_present;
++}
++
+ static void pwm_init(void) {
+     nrfx_pwm_config_t cfg = NRFX_PWM_DEFAULT_CONFIG;
+     cfg.output_pins[0] = LF_MOD;
+@@ -184,6 +206,9 @@ static void lf_sense_disable(void) {
+     nrfx_lpcomp_uninit();
+     m_pwm_seq = NULL;
+     m_is_lf_emulating = false;
++    m_lf_reader_present = false;
++    m_polling_pause_requested = false;
++    m_polling_paused = false;
+     sd_clock_hfclk_release();
+ }
+ 
+@@ -445,3 +470,16 @@ bool lf_tag_idteck_data_factory(uint8_t slot, tag_specific_type_t tag_type) {
+     };
+     return lf_tag_data_factory(slot, tag_type, tag_id, sizeof(tag_id));
+ }
++
++bool lf_polling_pause_at_boundary(void) {
++    m_polling_pause_requested = true;
++    return m_polling_paused;
++}
++void lf_polling_resume(void) {
++    m_polling_pause_requested = false;
++    if (m_polling_paused) {
++        m_polling_paused = false;
++        if (m_is_lf_emulating && m_pwm_seq != NULL)
++            nrfx_pwm_simple_playback(&m_broadcast, m_pwm_seq, 10, NRFX_PWM_FLAG_STOP);
++    }
++}
+diff --git a/firmware/application/src/rfid/nfctag/lf/lf_tag_em.h b/firmware/application/src/rfid/nfctag/lf/lf_tag_em.h
+index b7d2c68..344526a 100644
+--- a/firmware/application/src/rfid/nfctag/lf/lf_tag_em.h
++++ b/firmware/application/src/rfid/nfctag/lf/lf_tag_em.h
+@@ -31,3 +31,9 @@ bool lf_tag_jablotron_data_factory(uint8_t slot, tag_specific_type_t tag_type);
+ int lf_tag_idteck_data_savecb(tag_specific_type_t type, tag_data_buffer_t *buffer);
+ bool lf_tag_idteck_data_factory(uint8_t slot, tag_specific_type_t tag_type);
+ bool is_lf_field_exists(void);
++
++// True while the LF emulation detects a real reader field (antenna-off sampled).
++bool lf_reader_field_present(void);
++
++bool lf_polling_pause_at_boundary(void);
++void lf_polling_resume(void);
+diff --git a/firmware/application/src/rfid/nfctag/tag_emulation.c b/firmware/application/src/rfid/nfctag/tag_emulation.c
+index 013ab7d..399c541 100644
+--- a/firmware/application/src/rfid/nfctag/tag_emulation.c
++++ b/firmware/application/src/rfid/nfctag/tag_emulation.c
+@@ -60,7 +60,7 @@ static uint16_t m_tag_data_hf_crc;
+ static tag_data_buffer_t m_tag_data_hf = {sizeof(m_tag_data_buffer_hf), m_tag_data_buffer_hf, &m_tag_data_hf_crc};
+ 
+ /**
+- * Eight card slots, each card slot has its own unique configuration
++ * Sixteen card slots, each card slot has its own unique configuration
+  */
+ static tag_slot_config_t slotConfig ALIGN_U32 = {
+     // Configure activated card slot, default activation of the 0th card slot (the first card)
+@@ -77,6 +77,8 @@ static tag_slot_config_t slotConfig ALIGN_U32 = {
+         { .enabled_hf = false, .enabled_lf = false, .tag_hf = TAG_TYPE_UNDEFINED,   .tag_lf = TAG_TYPE_UNDEFINED, },  // 6
+         { .enabled_hf = false, .enabled_lf = false, .tag_hf = TAG_TYPE_UNDEFINED,   .tag_lf = TAG_TYPE_UNDEFINED, },  // 7
+         { .enabled_hf = false, .enabled_lf = false, .tag_hf = TAG_TYPE_UNDEFINED,   .tag_lf = TAG_TYPE_UNDEFINED, },  // 8
++        // Slots 9..16 are not initialized explicitly: C static initialization leaves
++        // them zeroed (disabled + TAG_TYPE_UNDEFINED), matching the v8 -> v9 migration.
+     },
+ };
+ // The card slot configuration unique CRC, once the slot configuration changes, can be checked by CRC
+@@ -121,7 +123,6 @@ static tag_base_handler_map_t tag_base_map[] = {
+ };
+ 
+ static void tag_emulation_load_config(void);
+-static void tag_emulation_save_config(void);
+ 
+ /**
+  * get the data loader for the specific type of tag
+@@ -446,9 +447,11 @@ static void tag_emulation_migrate_slot_config_v0_to_v8(void) {
+     NRF_LOG_INFO("Migrating slotConfig v0...");
+     NRF_LOG_HEXDUMP_INFO(tmpbuf, sizeof(tmpbuf));
+     // Populate new slotConfig struct
+-    slotConfig.version = TAG_SLOT_CONFIG_CURRENT_VERSION;
++    slotConfig.version = 8;
+     slotConfig.active_slot = tmpbuf[0];
+-    for (uint8_t i = 0; i < ARRAYLEN(slotConfig.slots); i++) {
++    // Old config only has 8 slots; do not iterate the whole 16-slot array here,
++    // tmpbuf bytes beyond the old record length are uninitialized garbage.
++    for (uint8_t i = 0; i < 8; i++) {
+         bool enabled = tmpbuf[4 + (i * 4)] & 1;
+ 
+         slotConfig.slots[i].tag_hf = tmpbuf[4 + (i * 4) + 2];
+@@ -489,7 +492,18 @@ static void tag_emulation_migrate_slot_config(void) {
+              * through to the next case.
+              */
+ 
++        case 8:
++            // v8 -> v9: expand to 16 slots, clear the new slots.
++            // NOTE: if the slot count is expanded again in the future, adjust the 8 here.
++            memset(&slotConfig.slots[8], 0, 8 * sizeof(slotConfig.slots[0]));
++            NRF_LOG_INFO("Migrating slotConfig v8 to v9...");
++            for (uint8_t i = 0; i < 8; i++) slotConfig.slots[i].polling_skip = false;
++            slotConfig.version = 9;
++            // fall through: v9 already includes the skip bit in Mazha
++        case 9:
++            slotConfig.version = TAG_SLOT_CONFIG_CURRENT_VERSION;
+             tag_emulation_save_config();
++            break;
+         case TAG_SLOT_CONFIG_CURRENT_VERSION:
+             break;
+         default:
+@@ -520,7 +534,7 @@ static void tag_emulation_load_config(void) {
+ /**
+  * Save the emulated card configuration data
+  */
+-static void tag_emulation_save_config(void) {
++uint8_t tag_emulation_save_config(void) {
+     // We are configured the card slot configuration, and we need to calculate the current card slot configuration CRC code to judge whether the data below is updated
+     uint16_t new_calc_crc;
+     calc_14a_crc_lut((uint8_t *)&slotConfig, sizeof(slotConfig), (uint8_t *)&new_calc_crc);
+@@ -532,10 +546,12 @@ static void tag_emulation_save_config(void) {
+             m_slot_config_crc = new_calc_crc;
+         } else {
+             NRF_LOG_ERROR("Save tag slot config error.");
++            return STATUS_FLASH_WRITE_FAIL;
+         }
+     } else {
+         NRF_LOG_INFO("Tag slot config no change.");
+     }
++    return STATUS_SUCCESS;
+ }
+ 
+ /**
+@@ -606,6 +622,19 @@ void tag_emulation_change_slot(uint8_t index, bool sense_disable) {
+ /**
+  * Determine whether the specified card slot is enabled
+  */
++bool tag_emulation_slot_polling_skip(uint8_t slot) {
++    if (slot >= TAG_MAX_SLOT_NUM) {
++        return true;
++    }
++    return slotConfig.slots[slot].polling_skip;
++}
++
++void tag_emulation_slot_set_polling_skip(uint8_t slot, bool skip) {
++    if (slot < TAG_MAX_SLOT_NUM) {
++        slotConfig.slots[slot].polling_skip = skip;
++    }
++}
++
+ bool is_slot_enabled(uint8_t slot, tag_sense_type_t sense_type) {
+     if (sense_type == TAG_SENSE_LF) {
+         return slotConfig.slots[slot].enabled_lf;
+diff --git a/firmware/application/src/rfid/nfctag/tag_emulation.h b/firmware/application/src/rfid/nfctag/tag_emulation.h
+index f1e88c2..dac202a 100644
+--- a/firmware/application/src/rfid/nfctag/tag_emulation.h
++++ b/firmware/application/src/rfid/nfctag/tag_emulation.h
+@@ -9,8 +9,8 @@
+ #include "tag_base_type.h"
+ #include "utils.h"
+ 
+-// Up to eight card slots
+-#define TAG_MAX_SLOT_NUM 8
++// Up to sixteen card slots
++#define TAG_MAX_SLOT_NUM 16
+ 
+ extern bool g_is_tag_emulating;
+ 
+@@ -45,9 +45,9 @@ typedef struct {
+  * This configuration can be preserved by persistently to Flash
+  * 4 bytes a word, keep in mind the entire word alignment
+  */
+-#define TAG_SLOT_CONFIG_CURRENT_VERSION 8
++#define TAG_SLOT_CONFIG_CURRENT_VERSION 10
+ // Intended struct size, for static assert
+-#define TAG_SLOT_CONFIG_CURRENT_SIZE 68
++#define TAG_SLOT_CONFIG_CURRENT_SIZE 132
+ 
+ typedef struct {
+     // Basic configuration
+@@ -56,9 +56,10 @@ typedef struct {
+     uint32_t : 0;         // U32 align
+     struct {              // 4-byte slot config + 2*2-byte tag_specific_types
+         // Individual slot configuration
+-        uint32_t enabled_hf : 1;  // Whether to enable the HF card
+-        uint32_t enabled_lf : 1;  // Whether to enable the LF card
+-        uint32_t : 0;             // U32 align
++        uint32_t enabled_hf : 1;    // Whether to enable the HF card
++        uint32_t enabled_lf : 1;    // Whether to enable the LF card
++        uint32_t polling_skip : 1;  // v9 Mazha / v10 Mocha: skip this slot in auto polling
++        uint32_t : 0;               // U32 align
+         // Specific type of emulated card
+         union {
+             uint16_t U16_tag_hf;
+@@ -118,4 +119,9 @@ uint8_t tag_emulation_slot_find_next(uint8_t slot_now);
+ uint8_t tag_emulation_slot_find_prev(uint8_t slot_now);
+ bool is_tag_specific_type_valid(tag_specific_type_t tag_type);
+ 
++bool tag_emulation_slot_polling_skip(uint8_t slot);
++void tag_emulation_slot_set_polling_skip(uint8_t slot, bool skip);
++
++uint8_t tag_emulation_save_config(void);
++
+ #endif
+diff --git a/firmware/application/src/rfid/nfctag/tag_persistence.c b/firmware/application/src/rfid/nfctag/tag_persistence.c
+index 59c0221..d3e1d2e 100644
+--- a/firmware/application/src/rfid/nfctag/tag_persistence.c
++++ b/firmware/application/src/rfid/nfctag/tag_persistence.c
+@@ -1,6 +1,7 @@
+ #include "tag_persistence.h"
+ 
+ #include "fds_ids.h"
++#include "tag_emulation.h"
+ 
+ #define NRF_LOG_MODULE_NAME tag_persistence
+ #include "nrf_log.h"
+@@ -9,7 +10,7 @@
+ NRF_LOG_MODULE_REGISTER();
+ 
+ static void get_fds_map_by_slot_auto_inc_id(uint16_t id, uint8_t slot, tag_sense_type_t sense_type, fds_slot_record_map_t *map) {
+-    if ((sense_type == TAG_SENSE_NO) || (slot > 7)) {
++    if ((sense_type == TAG_SENSE_NO) || (slot >= TAG_MAX_SLOT_NUM)) {
+         APP_ERROR_CHECK(NRF_ERROR_INVALID_PARAM);
+     }
+     map->id = id + slot;
+diff --git a/firmware/application/src/rfid/polling.c b/firmware/application/src/rfid/polling.c
+new file mode 100644
+index 0000000..13d02a8
+--- /dev/null
++++ b/firmware/application/src/rfid/polling.c
+@@ -0,0 +1,156 @@
++#include "polling.h"
++
++#include "app_timer.h"
++#include "rfid_main.h"
++#include "settings.h"
++#include "tag_emulation.h"
++#include "lf_tag_em.h"
++#include "nfc_14a.h"
++
++APP_TIMER_DEF(m_polling_timer);
++
++#define POLLING_HF_QUIET_MS 50
++
++static volatile bool m_polling_pending;
++static bool m_polling_running;
++static volatile uint32_t m_last_reader_activity;
++static volatile bool m_hf_seen;
++static volatile bool m_hf_locked;
++static bool m_session_hf;
++static bool m_polling_active;      // cycling session in progress
++static uint8_t m_original_slot;    // slot to restore when the reader leaves
++
++static void polling_timer_handler(void *p_context) {
++    m_polling_pending = true;   // only set a flag: slot switch touches flash
++}
++
++void polling_init(void) {
++    ret_code_t err_code = app_timer_create(&m_polling_timer, APP_TIMER_MODE_REPEATED, polling_timer_handler);
++    APP_ERROR_CHECK(err_code);
++}
++
++void polling_start(void) {
++    if (!settings_get_polling_enable()) { polling_stop(); return; }
++    m_polling_pending = false;
++    // Stop-then-start so an interval change always takes effect immediately,
++    // regardless of the previous timer state.
++    app_timer_stop(m_polling_timer);
++    ret_code_t err_code = app_timer_start(m_polling_timer,
++                                          APP_TIMER_TICKS(settings_get_polling_interval_ms()), NULL);
++    APP_ERROR_CHECK(err_code);
++    m_polling_running = true;
++}
++
++void polling_stop(void) {
++    ret_code_t err_code = app_timer_stop(m_polling_timer);
++    APP_ERROR_CHECK(err_code);
++    m_polling_pending = false;
++    m_polling_running = false;
++    m_polling_active = false;
++    lf_polling_resume();
++}
++
++bool polling_is_running(void) {
++    return m_polling_running;
++}
++
++void polling_note_hf_field(bool present) {
++    m_hf_seen = present;
++    if (!present) m_hf_locked = false;
++}
++
++void polling_lock_hf_transaction(void) { m_hf_locked = true; }
++
++void polling_note_reader_activity(void) {
++    m_last_reader_activity = app_timer_cnt_get();
++}
++
++// Next enabled slot that participates in polling (skips polling_skip slots).
++static uint8_t polling_find_next(uint8_t slot_now) {
++    uint8_t candidate = slot_now;
++    for (uint8_t i = 0; i < TAG_MAX_SLOT_NUM; i++) {
++        candidate = tag_emulation_slot_find_next(candidate);
++        if (candidate == slot_now) {
++            break;  // no other enabled slot
++        }
++        // Keep the sensor for the triggering modality enabled on every candidate.
++        if (!tag_emulation_slot_polling_skip(candidate) &&
++            is_slot_enabled(candidate, m_session_hf ? TAG_SENSE_HF : TAG_SENSE_LF)) {
++            return candidate;
++        }
++    }
++    return slot_now;
++}
++
++static bool polling_reader_present(void) {
++    return lf_reader_field_present() || nfc_tag_14a_field_present();
++}
++
++void polling_process(void) {
++    if (!m_polling_running) return;
++    if (!settings_get_polling_enable()) { polling_stop(); return; }
++    if (get_device_mode() != DEVICE_MODE_TAG) {
++        m_polling_active = false;
++        m_polling_pending = false;
++        lf_polling_resume();
++        return;
++    } // emulation mode only
++
++    if (polling_reader_present()) {
++        if (!m_polling_active) {
++            // Reader arrived: start a cycling session from the current slot.
++            m_session_hf = nfc_tag_14a_field_present();
++            m_original_slot = tag_emulation_get_slot();
++            m_polling_active = true;
++            polling_start(); // interval begins at field/session arrival
++        }
++        if (!m_polling_pending) return;
++        // Concurrent fields must not let LF polling interrupt an HF transaction.
++        if (m_hf_locked || (!m_session_hf && nfc_tag_14a_field_present())) {
++            lf_polling_resume();
++            return;
++        }
++        if (m_session_hf) {
++            // Never interrupt SELECT/authentication/read/write. Quiet pre-selection
++            // activity may cycle, but any selected transaction locks until field loss.
++            if (m_hf_locked) return;
++            if (m_hf_seen && app_timer_cnt_diff_compute(app_timer_cnt_get(), m_last_reader_activity)
++                    < APP_TIMER_TICKS(POLLING_HF_QUIET_MS)) return;
++        }
++        if (lf_reader_field_present() && !lf_polling_pause_at_boundary()) {
++            return; // wait for a complete finite LF burst, never truncate a frame
++        }
++        m_polling_pending = false;
++        uint8_t slot_now = tag_emulation_get_slot();
++        uint8_t slot_new = polling_find_next(slot_now);
++        if (slot_new == slot_now) { lf_polling_resume(); return; } // only one enabled slot
++        if (m_session_hf && !nfc_tag_14a_polling_quiesce()) {
++            m_polling_pending = true;
++            return;
++        }
++        tag_emulation_change_slot(slot_new, true);
++        // RF polling feedback must not block the main loop for a sweep.
++        light_up_by_slot();
++    } else {
++        m_polling_pending = false;
++        if (m_polling_active) {
++            // Reader left: stop cycling and restore the original slot.
++            m_hf_locked = false;
++            m_hf_seen = false;
++            tag_emulation_change_slot(m_original_slot, true);
++            light_up_by_slot();
++            m_polling_active = false;
++        }
++    }
++}
++
++void polling_forget_session(void) {
++    m_polling_active = false;
++    m_polling_pending = false;
++    lf_polling_resume();
++}
++bool polling_hf_can_switch(void) {
++    return !m_hf_locked && (!m_hf_seen ||
++        app_timer_cnt_diff_compute(app_timer_cnt_get(), m_last_reader_activity)
++            >= APP_TIMER_TICKS(POLLING_HF_QUIET_MS));
++}
+diff --git a/firmware/application/src/rfid/polling.h b/firmware/application/src/rfid/polling.h
+new file mode 100644
+index 0000000..7ab86d7
+--- /dev/null
++++ b/firmware/application/src/rfid/polling.h
+@@ -0,0 +1,23 @@
++#ifndef POLLING_H
++#define POLLING_H
++
++#include <stdbool.h>
++#include <stdint.h>
++
++// Field-triggered slot polling: while a reader field is present, cycle through
++// the enabled slots at the configured interval; when the reader leaves, restore
++// the original slot. Idle (no reader) = no switching.
++void polling_init(void);
++void polling_start(void);   // (re)start the polling timer per settings
++void polling_stop(void);
++void polling_process(void); // call from main loop
++bool polling_is_running(void);
++void polling_note_hf_field(bool present);
++void polling_lock_hf_transaction(void);
++// Called by the HF tag module on every frame received from the reader.
++void polling_note_reader_activity(void);
++
++#endif
++
++void polling_forget_session(void);
++bool polling_hf_can_switch(void);
+diff --git a/firmware/application/src/rfid_main.c b/firmware/application/src/rfid_main.c
+index afe2b3e..2ec45b2 100644
+--- a/firmware/application/src/rfid_main.c
++++ b/firmware/application/src/rfid_main.c
+@@ -1,6 +1,7 @@
+ #include <stdint.h>
+ #include "rfid_main.h"
+ #include "rgb_marquee.h"
++#include "hw_connect.h"
+ 
+ //The current mode of the device
+ device_mode_t rfid_state = DEVICE_MODE_NONE;
+@@ -69,32 +70,66 @@ void tag_mode_enter(void) {
+ 
+         // to run tag emulation
+         tag_emulation_sense_run();
++
++        // Restore the slot LED display (position + high-half mixed color).
++        // Operations like offline copy leave their own LED colors behind.
++        light_up_by_slot();
+     }
+ }
+ 
++/**
++ * @brief Map a slot to its display color. Slots 9-16 use mixed colors so the
++ *        high half is distinguishable without blinking. Returns a
++ *        chameleon_rgb_type_t value usable by the marquee animation.
++ */
++uint8_t get_slot_display_color(uint8_t slot) {
++    uint8_t base = get_color_by_slot(slot);
++    if (slot >= 8) {
++        switch (base) {
++            case 0: return RGB_YELLOW;   // dual -> yellow
++            case 1: return RGB_CYAN;     // IC    -> cyan
++            default: return RGB_MAGENTA; // ID    -> magenta
++        }
++    }
++    return base;
++}
++
++/**
++ * @brief Set the LED color for a slot (mixed color for the high half).
++ */
++static void set_slot_led_color_by_slot(uint8_t slot) {
++    set_slot_light_color((chameleon_rgb_type_t)get_slot_display_color(slot));
++}
++
+ /**
+  * @brief Function for light up led by slot index
+  */
+ void light_up_by_slot(void) {
++    rgb_marquee_stop();
+     uint32_t *led_pins = hw_get_led_array();
+     // The current lighting logic has not changed very much, so we only need to light up the specified lamp for the time being.
+     uint8_t slot = tag_emulation_get_slot();
++    uint8_t led_index = slot % 8;   // 16 slots map onto 8 LEDs
+     for (int i = 0; i < RGB_LIST_NUM; i++) {
+-        if (i == slot) {
++        if (i == led_index) {
+             nrf_gpio_pin_set(led_pins[i]);
+         } else {
+             nrf_gpio_pin_clear(led_pins[i]);
+         }
+     }
++    set_slot_led_color_by_slot(slot);
+ }
+ 
+ /**
+  * @brief Apply visual and state changes after switching slot
+  */
+ void apply_slot_change(uint8_t slot_now, uint8_t slot_new) {
+-    uint8_t color_now = get_color_by_slot(slot_now);
+-    uint8_t color_new = get_color_by_slot(slot_new);
+-    rgb_marquee_slot_switch(slot_now, color_now, slot_new, color_new);
++    // Foreground slot feedback owns PWM until complete. USB resumes at step 0.
++    rgb_marquee_stop();
++    rgb_marquee_slot_switch(slot_now, get_slot_display_color(slot_now),
++                            slot_new, get_slot_display_color(slot_new));
++    rgb_marquee_stop();
++    light_up_by_slot();
+ }
+ 
+ /**
+diff --git a/firmware/application/src/rfid_main.h b/firmware/application/src/rfid_main.h
+index 5b9b723..d2d78b2 100644
+--- a/firmware/application/src/rfid_main.h
++++ b/firmware/application/src/rfid_main.h
+@@ -34,3 +34,5 @@ device_mode_t get_device_mode(void);
+ uint8_t get_color_by_slot(uint8_t slot);
+ 
+ #endif
++
++uint8_t get_slot_display_color(uint8_t slot);
+diff --git a/firmware/application/src/rgb_marquee.c b/firmware/application/src/rgb_marquee.c
+index 414aba6..5bb1a20 100644
+--- a/firmware/application/src/rgb_marquee.c
++++ b/firmware/application/src/rgb_marquee.c
+@@ -38,13 +38,27 @@ static uint8_t rgb_marquee_usb_open_step = 0;
+ extern bool g_usb_led_marquee_enable;
+ 
+ 
++// PWM ownership is explicit: foreground and USB transitions can stop repeatedly
++// without calling nrfx stop/uninit on an uninitialized instance.
++static bool m_pwm_initialized;
++static void rgb_pwm_uninit(void) {
++    if (!m_pwm_initialized) return;
++    nrfx_pwm_stop(&pwm0_ins, true);
++    nrfx_pwm_uninit(&pwm0_ins);
++    m_pwm_initialized = false;
++}
++static void rgb_pwm_init(nrfx_pwm_handler_t handler) {
++    APP_ERROR_CHECK(nrf_drv_pwm_init(&pwm0_ins, &pwm_config, handler));
++    m_pwm_initialized = true;
++}
++
++
+ void rgb_marquee_init(void) {
+     timer = bsp_obtain_timer(0);
+ }
+ 
+ void rgb_marquee_stop(void) {
+-    nrfx_pwm_stop(&pwm0_ins, true);
+-    nrfx_pwm_uninit(&pwm0_ins);//turn off pwm output
++    rgb_pwm_uninit();//turn off pwm output
+     rgb_marquee_usb_idle_step = 0;
+     rgb_marquee_usb_open_step = 0;
+ }
+@@ -82,6 +96,8 @@ void rgb_marquee_usb_open_sweep(uint8_t color, uint8_t dir) {
+     }
+ 
+     if (rgb_marquee_usb_open_step == 0) {
++        startled = 0;
++        setled = 0;
+         //Adjust the color
+         set_slot_light_color(color);
+         pwm_sequ_val.channel_0 = 1;
+@@ -104,8 +120,8 @@ void rgb_marquee_usb_open_sweep(uint8_t color, uint8_t dir) {
+         }
+         startled++;
+         if (startled > 7)startled = 0;
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+ 
+         bsp_set_timer(timer, 0);
+@@ -132,6 +148,8 @@ void rgb_marquee_usb_open_symmetric(uint8_t color) {
+     }
+ 
+     if (rgb_marquee_usb_open_step == 0) {
++        startled = 0;
++        setled = 0;
+         //Adjust the color
+         set_slot_light_color(color);
+         pwm_sequ_val.channel_0 = 1;
+@@ -153,8 +171,8 @@ void rgb_marquee_usb_open_symmetric(uint8_t color) {
+         pwm_config.output_pins[3] = NRF_DRV_PWM_PIN_NOT_USED;
+         startled++;
+         if (startled > 7)startled = 0;
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+ 
+         bsp_set_timer(timer, 0);
+@@ -172,6 +190,12 @@ void rgb_marquee_usb_open_symmetric(uint8_t color) {
+ //dir 0-from 1 card slot to 8 card slot, 1-from 8 card slot to 1 card slot (Direction, the end point is determined by the END parameter)
+ //end To scan the number of lamps, decide the final animation area with the direction
+ void rgb_marquee_sweep_to(uint8_t color, uint8_t dir, uint8_t end) {
++    // `end` is a virtual position on a 12-position strip: 0-7 are real LEDs,
++    // 8-11 are the "past the edge" markers (11 = sweep fully off the strip).
++    // High-half slot numbers (>11) map onto their 8-LED position.
++    if (end > 11) {
++        end %= 8;
++    }
+     uint8_t startled = 0;
+     uint8_t setled = 0;
+     uint8_t leds2turnon = 0;
+@@ -236,8 +260,8 @@ void rgb_marquee_sweep_to(uint8_t color, uint8_t dir, uint8_t end) {
+             }
+ 
+         }
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+         bsp_delay_ms(40);
+         startled++;
+@@ -258,6 +282,8 @@ static void rgb_marquee_slot_switch_pwm_callback(nrfx_pwm_evt_type_t event_type)
+     }
+ }
+ void rgb_marquee_slot_switch(uint8_t led_down, uint8_t color_led_down, uint8_t led_up, uint8_t color_led_up) {
++    led_down %= 8;   // 16 slots map onto 8 LEDs
++    led_up %= 8;
+     int16_t light_level = 99; //ledBrightnessValue
+     uint32_t *led_pins = hw_get_led_array();
+     if (led_down >= 0 && led_down <= 7) {
+@@ -270,7 +296,7 @@ void rgb_marquee_slot_switch(uint8_t led_down, uint8_t color_led_down, uint8_t l
+             //processBrightness
+             pwm_sequ_val.channel_0 = get_pwmduty(light_level);
+ 
+-            nrfx_pwm_uninit(&pwm0_ins); //turnOffPwmOutput
++            rgb_pwm_uninit(); //turnOffPwmOutput
+ 
+             if (led_up >= 0 && led_up <= 7) {
+                 nrf_gpio_pin_clear(led_pins[led_up]);
+@@ -278,7 +304,7 @@ void rgb_marquee_slot_switch(uint8_t led_down, uint8_t color_led_down, uint8_t l
+ 
+             set_slot_light_color(color_led_down);
+ 
+-            nrf_drv_pwm_init(&pwm0_ins, &pwm_config, rgb_marquee_slot_switch_pwm_callback);
++            rgb_pwm_init(rgb_marquee_slot_switch_pwm_callback);
+             nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+ 
+             while (callback_waiting == 0); //Waiting for the output of the PWM module to complete
+@@ -301,7 +327,7 @@ void rgb_marquee_slot_switch(uint8_t led_down, uint8_t color_led_down, uint8_t l
+             //Process brightness
+             pwm_sequ_val.channel_0 = get_pwmduty(light_level);
+ 
+-            nrfx_pwm_uninit(&pwm0_ins); //Turn off PWM output
++            rgb_pwm_uninit(); //Turn off PWM output
+ 
+             if (led_down >= 0 && led_down <= 7) {
+                 nrf_gpio_pin_clear(led_pins[led_down]);
+@@ -309,7 +335,7 @@ void rgb_marquee_slot_switch(uint8_t led_down, uint8_t color_led_down, uint8_t l
+ 
+             set_slot_light_color(color_led_up);
+ 
+-            nrf_drv_pwm_init(&pwm0_ins, &pwm_config, rgb_marquee_slot_switch_pwm_callback);
++            rgb_pwm_init(rgb_marquee_slot_switch_pwm_callback);
+             nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+ 
+             while (callback_waiting == 0); //Waiting for the output of the PWM module to complete
+@@ -384,8 +410,8 @@ void rgb_marquee_sweep_fade(uint8_t color, uint8_t dir, uint8_t end, uint8_t sta
+         if (startled == end) {
+             break;
+         }
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+         bsp_delay_ms(50);
+         startled++;
+@@ -399,6 +425,8 @@ void rgb_marquee_sweep_fade(uint8_t color, uint8_t dir, uint8_t end, uint8_t sta
+ //start Start the lamp position
+ //stop Stop lamp position
+ void rgb_marquee_sweep_from_to(uint8_t color, uint8_t start, uint8_t stop) {
++    start %= 8;   // 16 slots map onto 8 LEDs
++    stop %= 8;
+     int8_t setled = start;
+     uint32_t *led_pins = hw_get_led_array();
+     //Set the brightness
+@@ -415,8 +443,8 @@ void rgb_marquee_sweep_from_to(uint8_t color, uint8_t start, uint8_t stop) {
+         pwm_config.output_pins[2] = NRF_DRV_PWM_PIN_NOT_USED;
+         pwm_config.output_pins[3] = NRF_DRV_PWM_PIN_NOT_USED;
+         pwm_config.output_pins[0] = led_pins[setled];
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+         bsp_delay_ms(50);
+         setled = start < stop ? setled + 1 : setled - 1;
+@@ -472,9 +500,9 @@ void rgb_marquee_usb_idle(void) {
+                 pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
+                 pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
+                 pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
+-                nrfx_pwm_uninit(&pwm0_ins); //Close PWM output
++                rgb_pwm_uninit(); //Close PWM output
+                 set_slot_light_color(rgb_marquee_usb_idle_color);
+-                nrf_drv_pwm_init(&pwm0_ins, &pwm_config, rgb_marquee_usb_idle_pwm_callback);
++                rgb_pwm_init(rgb_marquee_usb_idle_pwm_callback);
+                 nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+                 rgb_marquee_usb_idle_step = 3;
+             }
+@@ -509,9 +537,9 @@ void rgb_marquee_usb_idle(void) {
+                 pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
+                 pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
+                 pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
+-                nrfx_pwm_uninit(&pwm0_ins); //Close PWM output
++                rgb_pwm_uninit(); //Close PWM output
+                 set_slot_light_color(rgb_marquee_usb_idle_color);
+-                nrf_drv_pwm_init(&pwm0_ins, &pwm_config, rgb_marquee_usb_idle_pwm_callback);
++                rgb_pwm_init(rgb_marquee_usb_idle_pwm_callback);
+                 nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+                 rgb_marquee_usb_idle_step = 7;
+             }
+@@ -539,6 +567,7 @@ void rgb_marquee_usb_idle(void) {
+ }
+ 
+ void rgb_marquee_symmetric_out(uint8_t color, uint8_t slot) {
++    slot %= 8;   // 16 slots map onto 8 LEDs
+     uint32_t *led_pins = hw_get_led_array();
+ 
+     //Adjust the color
+@@ -591,14 +620,15 @@ void rgb_marquee_symmetric_out(uint8_t color, uint8_t slot) {
+             }
+         }
+ 
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+         bsp_delay_ms(60);
+     }
+ }
+ 
+ void rgb_marquee_symmetric_in(uint8_t color, uint8_t slot) {
++    slot %= 8;   // 16 slots map onto 8 LEDs
+     uint32_t *led_pins = hw_get_led_array();
+ 
+     //Adjust the color
+@@ -651,8 +681,8 @@ void rgb_marquee_symmetric_in(uint8_t color, uint8_t slot) {
+             }
+         }
+ 
+-        nrfx_pwm_uninit(&pwm0_ins);
+-        nrf_drv_pwm_init(&pwm0_ins, &pwm_config, NULL);
++        rgb_pwm_uninit();
++        rgb_pwm_init(NULL);
+         nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+         bsp_delay_ms(60);
+     }
+diff --git a/firmware/application/src/settings.c b/firmware/application/src/settings.c
+index 41bfb57..ed477a6 100644
+--- a/firmware/application/src/settings.c
++++ b/firmware/application/src/settings.c
+@@ -63,6 +63,12 @@ void settings_init_long_press_threshold_config(void) {
+     config.long_press_threshold = SETTINGS_LONG_PRESS_THRESHOLD_DEFAULT_MS;
+ }
+ 
++static void settings_init_polling_config(void) {
++    config.polling_enable = false;
++    config.polling_interval_ms = 500;
++    config.ab_reboot_enable = true;
++}
++
+ void settings_init_config(void) {
+     settings_update_version_for_config();
+     config.animation_config = SettingsAnimationModeFull; // add on version1
+@@ -72,6 +78,7 @@ void settings_init_config(void) {
+     settings_init_ble_pairing_enable_config();
+     settings_init_sleep_timeout_config();
+     settings_init_long_press_threshold_config();
++    settings_init_polling_config();
+ }
+ 
+ void settings_migrate(void) {
+@@ -98,6 +105,9 @@ void settings_migrate(void) {
+         case 6:
+             settings_init_long_press_threshold_config();
+ 
++        case 7:
++            settings_init_polling_config();
++
+             /*
+              * Add new migration steps ABOVE THIS COMMENT
+              * `settings_update_version_for_config()` and `break` statements should only be used on the last migration step, all the previous steps must fall
+@@ -113,17 +123,31 @@ void settings_migrate(void) {
+ }
+ 
+ void settings_load_config(void) {
++    // Initialize the tail before reading a shorter legacy record.
++    settings_init_config();
+     uint16_t length = sizeof(config);
+     bool ret = fds_read_sync(FDS_SETTINGS_FILE_ID, FDS_SETTINGS_RECORD_KEY, &length, (uint8_t *)&config);
+     if (ret) {
++        update_config_crc();
++        // Mazha v8 is unique. Both forks used v7/16 bytes with incompatible
++        // meanings, and slot-v9 is not proof after an official reflash.
++        // For ambiguous v7 preserve the official threshold and default polling
++        // off. A Mazha v7 user must explicitly configure the new interval.
++        bool mazha = config.version == 8;
++        if (mazha && length == 16) {
++            config.polling_interval_ms = config.long_press_threshold;
++            settings_init_long_press_threshold_config();
++            config.version = SETTINGS_CURRENT_VERSION;
++        }
++        if (config.polling_interval_ms < 100 || config.polling_interval_ms > 5000)
++            config.polling_interval_ms = 500;
+         NRF_LOG_INFO("Load config done.");
+         // After the reading is complete, we first save a copy of the current CRC, which can be used as a reference for comparison of changes when saving later
+-        update_config_crc();
+     } else {
+         NRF_LOG_WARNING("Config does not exist, loading default values...");
+         settings_init_config();
+     }
+-    if (config.version > SETTINGS_CURRENT_VERSION) {
++    if (config.version != SETTINGS_CURRENT_VERSION && config.version > 7) {
+         NRF_LOG_WARNING("Config version %d is greater than current firmware supports (%d). Default config will be loaded.", config.version, SETTINGS_CURRENT_VERSION);
+         settings_init_config();
+     }
+@@ -328,3 +352,12 @@ void settings_set_long_press_threshold(uint16_t duration) {
+     }
+     config.long_press_threshold = duration;
+ }
++
++bool settings_get_polling_enable(void) { return config.polling_enable; }
++void settings_set_polling_enable(bool enable) { config.polling_enable = enable; }
++uint16_t settings_get_polling_interval_ms(void) { return config.polling_interval_ms; }
++void settings_set_polling_interval_ms(uint16_t ms) {
++    if (ms >= 100 && ms <= 5000) config.polling_interval_ms = ms;
++}
++bool settings_get_ab_reboot_enable(void) { return config.ab_reboot_enable; }
++void settings_set_ab_reboot_enable(bool enable) { config.ab_reboot_enable = enable; }
+diff --git a/firmware/application/src/settings.h b/firmware/application/src/settings.h
+index 704fdea..6d95be4 100644
+--- a/firmware/application/src/settings.h
++++ b/firmware/application/src/settings.h
+@@ -5,7 +5,7 @@
+ 
+ #include "utils.h"
+ 
+-#define SETTINGS_CURRENT_VERSION 7
++#define SETTINGS_CURRENT_VERSION 0x4D01
+ #define SETTINGS_SLEEP_TIMEOUT_DEFAULT_S 8   // default wake timeout in seconds (matches SLEEP_DELAY_MS_BUTTON_WAKEUP)
+ #define SETTINGS_SLEEP_TIMEOUT_MIN_S      5
+ #define SETTINGS_SLEEP_TIMEOUT_MAX_S      60
+@@ -35,6 +35,10 @@ typedef enum {
+     SettingsButtonShowBattery = 4U,
+     // Toggle NFC field generator on/off (Ultra only, must be in reader mode)
+     SettingsButtonNfcFieldGenerator = 5U,
++    // Toggle auto slot polling on/off
++    SettingsButtonTogglePolling = 6U,
++    // Restart into the bootloader (DFU mode)
++    SettingsButtonEnterDfuMode = 7U,
+ } settings_button_function_t;
+ 
+ typedef struct ALIGN_U32 {
+@@ -43,7 +47,9 @@ typedef struct ALIGN_U32 {
+     // 1 byte
+     uint8_t animation_config : 2;
+     uint8_t ble_pairing_enable : 1;
+-    uint8_t reserved0 : 5; // If you are add switch field, reallocating me.
++    uint8_t polling_enable : 1;   // Mazha bit position preserved by Mocha
++    uint8_t ab_reboot_enable : 1; // Mazha bit position preserved by Mocha
++    uint8_t reserved0 : 3;
+ 
+     // 1 byte
+     uint8_t button_a_press : 4;
+@@ -60,7 +66,8 @@ typedef struct ALIGN_U32 {
+     uint8_t sleep_timeout; // wake timeout in seconds after button wakeup
+ 
+     // 2 bytes (add on version7)
+-    uint16_t long_press_threshold; // long button press threshold in ms
++    uint16_t long_press_threshold; // official v7 field, never reused
++    uint16_t polling_interval_ms; // Mocha schema 0x4D01
+ 
+     /*
+      * Warning !!!!!!!!!!!!!!!!!!!!!! <-------------
+@@ -69,6 +76,7 @@ typedef struct ALIGN_U32 {
+      * and fully use the space of this structure before considering reallocating memory space.
+      */
+ } settings_data_t;
++_Static_assert(sizeof(settings_data_t) == 16, "Mocha settings layout");
+ 
+ void settings_init_config(void);
+ void settings_migrate(void);
+@@ -92,4 +100,10 @@ void settings_init_sleep_timeout_config(void);
+ uint16_t settings_get_long_press_threshold(void);
+ void settings_set_long_press_threshold(uint16_t duration);
+ void settings_init_long_press_threshold_config(void);
++bool settings_get_polling_enable(void);
++void settings_set_polling_enable(bool enable);
++uint16_t settings_get_polling_interval_ms(void);
++void settings_set_polling_interval_ms(uint16_t ms);
++bool settings_get_ab_reboot_enable(void);
++void settings_set_ab_reboot_enable(bool enable);
+ #endif
+diff --git a/firmware/application/src/utils/fds_ids.h b/firmware/application/src/utils/fds_ids.h
+index 0e35472..ad34a81 100644
+--- a/firmware/application/src/utils/fds_ids.h
++++ b/firmware/application/src/utils/fds_ids.h
+@@ -20,14 +20,14 @@
+ 
+ /*
+  * Each card slot has two types of data, high and low frequency
+- * FDS file ID follows the card slot, starting from 0x1100 to 0x1107
++ * FDS file ID follows the card slot, starting from 0x1100 to 0x110F
+  * FDS record key mirrors TAG_SENSE_LF/HF so is 1 for LF, 2 for HF (currently)
+  */
+ #define FDS_SLOT_TAG_DUMP_FILE_ID_BASE      0x1100
+ 
+ /*
+  * Each card slot has two types of data, high and low frequency, so it can get two names
+- * FDS file ID follows the card slot, starting from 0x1200 to 0x1207
++ * FDS file ID follows the card slot, starting from 0x1200 to 0x120F
+  * FDS record key mirrors TAG_SENSE_LF/HF so is 1 for LF, 2 for HF (currently)
+  */
+ #define FDS_SLOT_TAG_NICK_NAME_FILE_ID_BASE 0x1200
+diff --git a/firmware/application/src/utils/fds_util.c b/firmware/application/src/utils/fds_util.c
+index 109ddb7..986550e 100644
+--- a/firmware/application/src/utils/fds_util.c
++++ b/firmware/application/src/utils/fds_util.c
+@@ -65,6 +65,8 @@ bool fds_read_sync(uint16_t id, uint16_t key, uint16_t *length, uint8_t *buffer)
+             memcpy(buffer, flash_record.p_data, flash_record.p_header->length_words * 4);
+             NRF_LOG_INFO("FDS read success.");
+             *length = flash_record.p_header->length_words * 4;
++            err_code = fds_record_close(&record_desc);
++            APP_ERROR_CHECK(err_code);
+             return true;
+         } else {
+             NRF_LOG_INFO("FDS buffer too small, can't run memcpy, fds size = %d, buffer size = %d", flash_record.p_header->length_words * 4, *length);
+diff --git a/software/script/chameleon_cmd.py b/software/script/chameleon_cmd.py
+index d96137d..6f4ac3e 100644
+--- a/software/script/chameleon_cmd.py
++++ b/software/script/chameleon_cmd.py
+@@ -1407,7 +1407,7 @@ class ChameleonCMD:
+         i = 0
+         slot_index = 0
+ 
+-        while i < len(resp.data) and slot_index < 8:
++        while i < len(resp.data) and slot_index < len(SlotNumber):
+             slot_names = {'hf': '', 'lf': ''}
+ 
+             if i < len(resp.data):
+diff --git a/software/script/chameleon_enum.py b/software/script/chameleon_enum.py
+index f8e7cde..41a9d16 100644
+--- a/software/script/chameleon_enum.py
++++ b/software/script/chameleon_enum.py
+@@ -269,6 +269,14 @@ class SlotNumber(enum.IntEnum):
+     SLOT_6 = 6
+     SLOT_7 = 7
+     SLOT_8 = 8
++    SLOT_9 = 9
++    SLOT_10 = 10
++    SLOT_11 = 11
++    SLOT_12 = 12
++    SLOT_13 = 13
++    SLOT_14 = 14
++    SLOT_15 = 15
++    SLOT_16 = 16
+ 
+     @staticmethod
+     def to_fw(index: int):  # can be int or SlotNumber
+diff --git a/tests/test_host.py b/tests/test_host.py
+new file mode 100644
+index 0000000..4220ca3
+--- /dev/null
++++ b/tests/test_host.py
+@@ -0,0 +1,259 @@
++"""Compile actual firmware modules against mock hardware; never access USB/RF."""
++import importlib.util
++import re
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++ROOT = Path(__file__).resolve().parents[1]
++SRC = ROOT / 'firmware/application/src'
++
++COMMON = '''#pragma once
++#include <stdint.h>
++#include <stdbool.h>
++#include <string.h>
++#include <assert.h>
++#define ALIGN_U32 __attribute__((aligned(4)))
++#define PACKED __attribute__((packed))
++#define STATIC_ASSERT(x) _Static_assert(x, #x)
++#define APP_ERROR_CHECK_BOOL(x) assert(x)
++#define NRF_LOG_MODULE_REGISTER()
++#define NRF_LOG_ERROR(...)
++#define NRF_LOG_WARNING(...)
++#define NRF_LOG_INFO(...)
++#define STATUS_SUCCESS 0x68
++#define STATUS_FLASH_WRITE_FAIL 0x70
++'''
++
++class FirmwareTests(unittest.TestCase):
++    def compile_run(self, files, program):
++        with tempfile.TemporaryDirectory() as tmp:
++            p = Path(tmp)
++            for name, content in files.items(): (p/name).write_text(content)
++            (p/'test.c').write_text(program)
++            subprocess.run(['cc','-std=c11','-Wall','-Werror','-Wno-unused-function','-I',tmp,str(p/'test.c'),'-o',str(p/'test')], check=True, capture_output=True)
++            subprocess.run([str(p/'test')], check=True, capture_output=True)
++
++    def test_settings_migration_and_flash_failure(self):
++        files = {name: COMMON for name in ['utils.h','crc_utils.h','app_status.h','nrf_log.h','nrf_log_ctrl.h','nrf_log_default_backends.h']}
++        files['settings.h']=(SRC/'settings.h').read_text()
++        files['settings.c']=(SRC/'settings.c').read_text()
++        files['fds_ids.h']=(SRC/'utils/fds_ids.h').read_text()
++        files['fds_util.h']=COMMON+'''bool fds_read_sync(uint16_t,uint16_t,uint16_t*,uint8_t*);
++bool fds_write_sync(uint16_t,uint16_t,uint16_t,uint8_t*);
++void calc_14a_crc_lut(uint8_t*,uint16_t,uint8_t*);
++'''
++        self.compile_run(files, '''#include "settings.c"
++static uint8_t saved[32]; static uint16_t saved_len; static bool exists, fail; static int writes;
++bool fds_read_sync(uint16_t id,uint16_t key,uint16_t *len,uint8_t *buf) {
++ if (!exists || id!=FDS_SETTINGS_FILE_ID || saved_len>*len) return false;
++ memcpy(buf,saved,saved_len); *len=saved_len; return true;
++}
++bool fds_write_sync(uint16_t id,uint16_t key,uint16_t len,uint8_t *buf) {
++ if(fail) return false; memcpy(saved,buf,len); saved_len=len; exists=true; writes++; return true;
++}
++void calc_14a_crc_lut(uint8_t *p,uint16_t n,uint8_t *out) {
++ uint16_t c=0x1234; for(int i=0;i<n;i++) c=(c*31)^p[i]; memcpy(out,&c,2);
++}
++static void fixture(uint16_t version,uint16_t legacy) {
++ settings_init_config(); config.version=version; config.long_press_threshold=legacy;
++ config.polling_enable=true; config.ab_reboot_enable=false; config.button_a_press=6;
++ memcpy(saved,&config,16); saved_len=16; exists=true; m_config_crc=0; writes=0;
++}
++int main(void) {
++ _Static_assert(sizeof(settings_data_t)==16,"settings layout");
++ exists=false; settings_load_config(); assert(config.version==SETTINGS_CURRENT_VERSION);
++ assert(!settings_get_polling_enable() && settings_get_polling_interval_ms()==500);
++ fixture(7,750); settings_load_config(); assert(config.long_press_threshold==750);
++ assert(!config.polling_enable && config.polling_interval_ms==500 && writes==1);
++ fixture(8,1200); settings_load_config(); assert(config.long_press_threshold==1000);
++ assert(config.polling_enable && config.polling_interval_ms==1200 && !config.ab_reboot_enable && writes==1);
++ fixture(8,0); settings_load_config(); assert(config.polling_interval_ms==500);
++ fixture(6,0); settings_load_config(); assert(config.long_press_threshold==1000 && !config.polling_enable);
++ settings_set_long_press_threshold(1); assert(config.long_press_threshold==200);
++ settings_set_polling_interval_ms(100); assert(config.polling_interval_ms==100);
++ settings_set_polling_interval_ms(5000); assert(config.polling_interval_ms==5000);
++ settings_set_polling_interval_ms(5001); assert(config.polling_interval_ms==5000);
++ settings_save_config(); settings_load_config(); assert(config.polling_interval_ms==5000);
++ settings_set_polling_enable(true); fail=true; assert(settings_save_config()==STATUS_FLASH_WRITE_FAIL);
++ return 0;
++}''')
++
++    def test_polling_scheduler_and_transaction_lock(self):
++        files={'polling.c':(SRC/'rfid/polling.c').read_text(),'polling.h':(SRC/'rfid/polling.h').read_text()}
++        files['app_timer.h']=COMMON+'''typedef int ret_code_t;
++#define APP_TIMER_DEF(x) static int x
++#define APP_TIMER_MODE_REPEATED 1
++#define APP_TIMER_TICKS(x) (x)
++#define APP_ERROR_CHECK(x) assert((x)==0)
++static uint32_t now;
++static int app_timer_create(int *a,int b,void (*f)(void*)) { return 0; }
++static int app_timer_start(int a,uint32_t ticks,void *p) { assert(ticks>=100&&ticks<=5000); return 0; }
++static int app_timer_stop(int a) { return 0; }
++static uint32_t app_timer_cnt_get(void) { return now; }
++static uint32_t app_timer_cnt_diff_compute(uint32_t a,uint32_t b) { return (a-b)&0xffffff; }
++'''
++        files['settings.h']=COMMON+'''static bool enabled=true; static uint16_t interval=500;
++static bool settings_get_polling_enable(void) { return enabled; }
++static uint16_t settings_get_polling_interval_ms(void) { return interval; }
++'''
++        files['rfid_main.h']=COMMON+'''#define DEVICE_MODE_TAG 1
++#define DEVICE_MODE_READER 2
++static int mode=1, displays;
++static int get_device_mode(void) { return mode; }
++static void light_up_by_slot(void) { displays++; }
++'''
++        files['tag_emulation.h']=COMMON+'''#define TAG_MAX_SLOT_NUM 16
++#define TAG_SENSE_HF 2
++#define TAG_SENSE_LF 1
++static uint8_t slot; static bool hf[16], lf[16], skip[16]; static int switches;
++static uint8_t tag_emulation_get_slot(void) { return slot; }
++static uint8_t tag_emulation_slot_find_next(uint8_t n) { for(int i=0;i<16;i++) { n=(n+1)%16; if(hf[n]||lf[n]) return n; } return n; }
++static bool tag_emulation_slot_polling_skip(uint8_t n) { return skip[n]; }
++static bool is_slot_enabled(uint8_t n,int sense) { return sense==2?hf[n]:lf[n]; }
++static void tag_emulation_change_slot(uint8_t n,bool b) { slot=n; switches++; }
++'''
++        files['lf_tag_em.h']=COMMON+'''static bool lf_field, lf_boundary, pause;
++static bool lf_reader_field_present(void) { return lf_field; }
++static bool lf_polling_pause_at_boundary(void) { pause=true; return lf_boundary; }
++static void lf_polling_resume(void) { pause=false; }
++'''
++        files['nfc_14a.h']=COMMON+'''static bool hf_field, quiesce_ok=true;
++static bool nfc_tag_14a_field_present(void) { return hf_field; }
++static bool nfc_tag_14a_polling_quiesce(void) { return quiesce_ok; }
++'''
++        self.compile_run(files, '''#include "polling.c"
++static void tick(void) { now+=500; polling_timer_handler(0); polling_process(); }
++int main(void) {
++ polling_init(); polling_start(); tick(); assert(switches==0);
++ hf[0]=hf[8]=hf[15]=true; hf_field=true; polling_note_hf_field(true);
++ polling_process(); tick(); assert(slot==8); skip[15]=true; tick(); assert(slot==0);
++ polling_lock_hf_transaction(); tick(); assert(slot==0);
++ hf_field=false; polling_note_hf_field(false); polling_process(); assert(slot==0);
++ hf_field=true; polling_process(); quiesce_ok=false; tick(); assert(slot==0);
++ quiesce_ok=true; polling_process(); assert(slot==8);
++ polling_forget_session(); slot=15; hf_field=false; polling_process(); assert(slot==15);
++ slot=0; hf_field=true; polling_note_hf_field(true); polling_note_reader_activity();
++ polling_process(); polling_timer_handler(0); polling_process(); assert(slot==0); now+=51; polling_process(); assert(slot==8);
++ mode=DEVICE_MODE_READER; tick(); assert(slot==8); mode=DEVICE_MODE_TAG;
++ hf_field=false; lf_field=true; lf[0]=lf[8]=true; slot=0; polling_process();
++ lf_boundary=false; tick(); assert(slot==0 && pause);
++ lf_boundary=true; polling_process(); assert(slot==8);
++ lf_field=false; polling_process(); assert(slot==0);
++ enabled=false; polling_start(); assert(!polling_is_running() && !pause);
++ now=0xfffff0; enabled=true; polling_start(); hf_field=true; polling_note_hf_field(true); polling_note_reader_activity();
++ now=0x25; assert(polling_hf_can_switch()); return 0;
++}''')
++
++    def test_slot_migration_preserves_types_and_skip(self):
++        h=(SRC/'rfid/nfctag/tag_emulation.h').read_text()
++        h=h[h.index('#define TAG_SLOT_CONFIG_CURRENT_VERSION'):h.index('// The most basic emulation')]
++        c=(SRC/'rfid/nfctag/tag_emulation.c').read_text()
++        start=c.index('static void tag_emulation_migrate_slot_config(void)')
++        end=c.index('\n/**',start)
++        self.compile_run({'common.h':COMMON}, '#include "common.h"\n#define TAG_MAX_SLOT_NUM 16\ntypedef uint16_t tag_specific_type_t;\n'+h+'''
++static tag_slot_config_t slotConfig;
++static void tag_emulation_migrate_slot_config_v0_to_v8(void) { assert(false); }
++static int saves;
++static void tag_emulation_save_config(void) { saves++; }
++'''+c[start:end]+'''
++int main(void) {
++ memset(&slotConfig,0xff,sizeof(slotConfig)); slotConfig.version=8; slotConfig.active_slot=7;
++ slotConfig.slots[0].tag_hf=1001; slotConfig.slots[7].tag_lf=2001;
++ tag_emulation_migrate_slot_config(); assert(slotConfig.version==10 && slotConfig.active_slot==7);
++ assert(slotConfig.slots[0].tag_hf==1001 && slotConfig.slots[7].tag_lf==2001);
++ assert(!slotConfig.slots[0].polling_skip && !slotConfig.slots[8].enabled_hf && !slotConfig.slots[15].tag_lf);
++ slotConfig.version=9; slotConfig.active_slot=15; slotConfig.slots[15].tag_hf=1100;
++ slotConfig.slots[15].polling_skip=true; tag_emulation_migrate_slot_config();
++ assert(slotConfig.version==10 && slotConfig.active_slot==15 && slotConfig.slots[15].tag_hf==1100 && slotConfig.slots[15].polling_skip);
++ assert(saves==2); return 0;
++}''')
++
++    def test_usb_animation_reset_colors_and_timing(self):
++        def function(text, name):
++            start=text.index('void '+name+'('); first=text.index('{',start); depth=1; end=first+1
++            while depth:
++                depth+=(text[end]=='{')-(text[end]=='}'); end+=1
++            return text[start:end]
++        c=(SRC/'rgb_marquee.c').read_text()
++        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
++        self.compile_run({'common.h':COMMON}, '#include "common.h"\n'+r"""
++#define NRF_DRV_PWM_FLAG_LOOP 1
++#define NRF_DRV_PWM_PIN_NOT_USED 0xffffffff
++typedef void (*nrfx_pwm_handler_t)(int);
++#define APP_ERROR_CHECK(x) assert((x)==0)
++static bool m_pwm_initialized;
++static int pwm0_ins, seq, timer_value, color_value, starts;
++static int *timer=&timer_value;
++static bool g_usb_led_marquee_enable=true;
++static uint8_t rgb_marquee_usb_idle_step, rgb_marquee_usb_open_step;
++static struct {uint16_t channel_0,channel_1,channel_2,channel_3;} pwm_sequ_val;
++static struct {uint32_t output_pins[4];} pwm_config;
++static uint32_t pins[]={0,1,2,3,4,5,6,7}, reverse[]={7,6,5,4,3,2,1,0};
++static uint32_t *hw_get_led_array(void) { return pins; }
++static uint32_t *hw_get_led_reversal_array(void) { return reverse; }
++static void nrfx_pwm_stop(void *p,bool b) {}
++static void nrfx_pwm_uninit(void *p) {}
++static int nrf_drv_pwm_init(void *p,void *c,void *f) { return 0; }
++static void nrf_drv_pwm_simple_playback(void *p,void *s,int n,int f) { starts++; }
++static void set_slot_light_color(int c) { color_value=c; }
++static void bsp_set_timer(int *t,int v) { *t=v; }
++#define NO_TIMEOUT_1MS(t,n) (*(t)<(n))
++"""+functions+r"""
++int main(void) {
++ rgb_marquee_usb_open_sweep(5,0); assert(color_value==5 && starts==1 && pwm_config.output_pins[0]==0);
++ timer_value=79; rgb_marquee_usb_open_sweep(5,0); assert(starts==1);
++ timer_value=80; rgb_marquee_usb_open_sweep(5,0); rgb_marquee_usb_open_sweep(5,0);
++ assert(starts==2 && pwm_config.output_pins[0]==1);
++ rgb_marquee_stop(); rgb_marquee_usb_open_sweep(3,1);
++ assert(color_value==3 && pwm_config.output_pins[0]==7); // foreground changed PWM: fresh color + direction + phase
++ rgb_marquee_stop(); rgb_marquee_usb_open_symmetric(4);
++ assert(color_value==4 && pwm_config.output_pins[0]==0 && pwm_config.output_pins[1]==7);
++ int previous=starts; timer_value=99; rgb_marquee_usb_open_symmetric(4); assert(starts==previous);
++ timer_value=100; rgb_marquee_usb_open_symmetric(4); rgb_marquee_usb_open_symmetric(4); assert(starts==previous+1);
++ g_usb_led_marquee_enable=false; rgb_marquee_usb_open_symmetric(4); assert(rgb_marquee_usb_open_step==0);
++ return 0;
++}
++""")
++
++    def test_protocol_has_no_collisions_and_preserves_official(self):
++        text=(SRC/'data_cmd.h').read_text()
++        pairs=re.findall(r'#define (DATA_CMD_\w+)\s+\((\d+)\)',text)
++        extension=[(name,n) for name,n in pairs if 1100 <= int(n) <= 1108]
++        self.assertEqual(len(extension),9)
++        for name,n in extension: self.assertEqual(sum(v==n for _,v in pairs),1)
++        d=dict(pairs)
++        self.assertEqual(d['DATA_CMD_GET_LONG_PRESS_THRESHOLD'],'1041')
++        self.assertEqual(d['DATA_CMD_SET_LONG_PRESS_THRESHOLD'],'1042')
++        self.assertEqual(d['DATA_CMD_GET_MOCHA_IDENTITY'],'1100')
++
++    def test_cli_identity_gate_and_serial_frame(self):
++        spec=importlib.util.spec_from_file_location('mocha',ROOT/'tools/mocha.py')
++        module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
++        f=module.frame(1104,b'\x13\x88')
++        self.assertEqual(sum(f[:9])&255,0); self.assertEqual(sum(f[9:])&255,0)
++        with self.assertRaises(Exception): module.bounded(100,5000)('99')
++        self.assertEqual(module.bounded(1,16)('16'),16)
++        # Mismatched official firmware returns successfully but must never be writable.
++        import sys, types
++        writes=[]
++        class Serial:
++            def __init__(self,*a,**k): self.closed=False
++            def reset_input_buffer(self): pass
++            def write(self,data): writes.append(data)
++            def read(self,n):
++                if n==9:
++                    h=bytearray(module.frame(1100,b'official')[:9]); h[5]=0x68; h[8]=(-sum(h[:8]))&255; return bytes(h)
++                return b'official'+bytes([(-sum(b'official'))&255])
++            def close(self): self.closed=True
++        old=sys.modules.get('serial'); old_platform=sys.platform
++        sys.modules['serial']=types.SimpleNamespace(Serial=Serial); sys.platform='test'
++        try:
++            with self.assertRaisesRegex(RuntimeError,'identity mismatch'): module.Device('/unused')
++            self.assertEqual(len(writes),1); self.assertEqual(int.from_bytes(writes[0][2:4],'big'),1100)
++        finally:
++            sys.platform=old_platform
++            if old is None: del sys.modules['serial']
++            else: sys.modules['serial']=old
++
++if __name__=='__main__': unittest.main(verbosity=2)
+diff --git a/tools/build_mocha.sh b/tools/build_mocha.sh
+new file mode 100755
+index 0000000..49100e3
+--- /dev/null
++++ b/tools/build_mocha.sh
+@@ -0,0 +1,15 @@
++#!/usr/bin/env bash
++set -euo pipefail
++cd -- "$(dirname -- "$0")/.."
++: "${GNU_INSTALL_ROOT:?Set GNU_INSTALL_ROOT to ARM GNU 12.2.rel1 bin directory with trailing slash}"
++PYTHON=${PYTHON:-python3}
++MOCHA_SOURCE_REV=${MOCHA_SOURCE_REV:-$(git rev-parse --short=7 HEAD)}
++mkdir -p dist
++make -C firmware/application clean GNU_INSTALL_ROOT="$GNU_INSTALL_ROOT" APP_FW_VER_MAJOR=2 APP_FW_VER_MINOR=2 GIT_VERSION="Mocha-1.0.0-${MOCHA_SOURCE_REV}"
++make -C firmware/application -j8 GNU_INSTALL_ROOT="$GNU_INSTALL_ROOT" APP_FW_VER_MAJOR=2 APP_FW_VER_MINOR=2 CURRENT_DEVICE_TYPE=ultra GIT_VERSION="Mocha-1.0.0-${MOCHA_SOURCE_REV}"
++"$PYTHON" tests/test_host.py
++"$PYTHON" tools/package_dfu.py
++"$PYTHON" tools/verify_dfu.py
++cp firmware/objects/application.hex dist/mocha-application.hex
++cp firmware/objects/application.bin dist/mocha-application.bin
++cp firmware/objects/application.out dist/mocha-application.elf
+diff --git a/tools/mocha.py b/tools/mocha.py
+new file mode 100755
+index 0000000..f917bf0
+--- /dev/null
++++ b/tools/mocha.py
+@@ -0,0 +1,128 @@
++#!/usr/bin/env python3
++"""Mocha control CLI. GPL-3.0; protocol follows upstream ChameleonUltra.
++No card dumps, flashing, or automatic port discovery. Every connection verifies
++Mocha identity before any write, including official button and slot commands.
++"""
++import argparse
++import json
++import struct
++import sys
++
++IDENTITY = b'Mocha/1;slots=16;base=5c99d4a'
++CMD = dict(identity=1100, polling_get=1101, polling_set=1102,
++           interval_get=1103, interval_set=1104, reboot_get=1105,
++           reboot_set=1106, skip_get=1107, skip_set=1108)
++
++
++def frame(cmd, data=b''):
++    header = struct.pack('!BBHHH', 0x11, 0xef, cmd, 0, len(data))
++    return header + bytes([(-sum(header)) & 255]) + data + bytes([(-sum(data)) & 255])
++
++
++class Device:
++    def __init__(self, port):
++        import serial
++        self.serial = serial.Serial(port, 115200, timeout=3, exclusive=True)
++        try:
++            if sys.platform == 'darwin':
++                import fcntl, termios
++                fcntl.ioctl(self.serial.fileno(), termios.TIOCEXCL)
++            self.serial.reset_input_buffer()
++            if self.q(CMD['identity']) != IDENTITY:
++                raise RuntimeError('Firmware identity mismatch; writes refused')
++        except BaseException:
++            self.serial.close()
++            raise
++
++    def close(self):
++        self.serial.close()
++
++    def q(self, cmd, data=b''):
++        self.serial.write(frame(cmd, data))
++        header = self.serial.read(9)
++        if len(header) != 9 or header[:2] != b'\x11\xef' or sum(header) & 255:
++            raise RuntimeError('Invalid or missing response header')
++        response_cmd, status, size = struct.unpack('!HHH', header[2:8])
++        if size > 4096:
++            raise RuntimeError('Response too large')
++        body = self.serial.read(size + 1)
++        if len(body) != size + 1 or sum(body) & 255 or response_cmd != cmd:
++            raise RuntimeError('Invalid response payload or command')
++        if status != 0x68:
++            raise RuntimeError(f'Command {cmd} failed: status 0x{status:04x}')
++        return body[:-1]
++
++
++def u16(value):
++    return struct.pack('!H', value)
++
++
++def bounded(low, high):
++    def parse(value):
++        number = int(value, 0)
++        if not low <= number <= high:
++            raise argparse.ArgumentTypeError(f'Expected {low}..{high}')
++        return number
++    return parse
++
++
++def parser():
++    p = argparse.ArgumentParser(description='Mocha v1 control; close GUI before connecting')
++    p.add_argument('--port', required=True)
++    sub = p.add_subparsers(dest='action', required=True)
++    sub.add_parser('status')
++    x = sub.add_parser('polling'); x.add_argument('value', choices=['on', 'off'])
++    x = sub.add_parser('interval'); x.add_argument('ms', type=bounded(100, 5000))
++    x = sub.add_parser('skip'); x.add_argument('mask', type=bounded(0, 65535), help='16-bit mask; bit 0=slot 1, e.g. 0x8001 skips 1 and 16')
++    x = sub.add_parser('ab-reboot'); x.add_argument('value', choices=['on', 'off'])
++    x = sub.add_parser('button'); x.add_argument('button', choices=['a','b']); x.add_argument('press', choices=['short','long']); x.add_argument('function', choices=['disabled','next','previous','clone-uid','battery','field','polling','dfu'])
++    x = sub.add_parser('select'); x.add_argument('slot', type=bounded(1,16))
++    x = sub.add_parser('long-press'); x.add_argument('ms', type=bounded(200,65535))
++    return p
++
++
++def run(d, a):
++    if a.action == 'status':
++        info = d.q(1019); enabled = d.q(1023)
++        if len(info) != 64 or len(enabled) != 32:
++            raise RuntimeError('Mocha 16-slot response size mismatch')
++        mask = int.from_bytes(d.q(CMD['skip_get']), 'big')
++        return dict(identity=IDENTITY.decode(), version=d.q(1017).decode(),
++                    polling=bool(d.q(CMD['polling_get'])[0]),
++                    interval_ms=int.from_bytes(d.q(CMD['interval_get']), 'big'),
++                    ab_reboot=bool(d.q(CMD['reboot_get'])[0]),
++                    long_press_ms=int.from_bytes(d.q(1041), 'big'),
++                    active_slot=d.q(1018)[0]+1,
++                    slots=[dict(slot=i+1, hf_type=int.from_bytes(info[i*4:i*4+2], 'big'),
++                                lf_type=int.from_bytes(info[i*4+2:i*4+4], 'big'),
++                                hf_enabled=bool(enabled[i*2]), lf_enabled=bool(enabled[i*2+1]),
++                                polling_skip=bool(mask & (1<<i))) for i in range(16)])
++    elif a.action == 'polling': d.q(CMD['polling_set'], bytes([a.value == 'on']))
++    elif a.action == 'interval': d.q(CMD['interval_set'], u16(a.ms))
++    elif a.action == 'skip': d.q(CMD['skip_set'], u16(a.mask))
++    elif a.action == 'ab-reboot': d.q(CMD['reboot_set'], bytes([a.value == 'on']))
++    elif a.action == 'select': d.q(1003, bytes([a.slot-1])); d.q(1009)
++    elif a.action == 'long-press': d.q(1042, u16(a.ms)); d.q(1013)
++    elif a.action == 'button':
++        functions = ['disabled','next','previous','clone-uid','battery','field','polling','dfu']
++        d.q(1027 if a.press == 'short' else 1029, bytes([ord(a.button), functions.index(a.function)]))
++        d.q(1013)
++    return {'saved': a.action}
++
++
++def main():
++    a = parser().parse_args()
++    device = None
++    try:
++        device = Device(a.port)
++        print(json.dumps(run(device, a), indent=2, ensure_ascii=False))
++    except (OSError, RuntimeError, ImportError) as error:
++        print(f'Mocha: {error}', file=sys.stderr)
++        return 1
++    finally:
++        if device: device.close()
++    return 0
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/tools/package_dfu.py b/tools/package_dfu.py
+new file mode 100644
+index 0000000..eca12b2
+--- /dev/null
++++ b/tools/package_dfu.py
+@@ -0,0 +1,11 @@
++#!/usr/bin/env python3
++"""Application-only package using Nordic's nrfutil 6.1.7 API, no BLE driver."""
++from pathlib import Path
++from nordicsemi.dfu.package import Package
++from nordicsemi.dfu.signing import Signing
++root=Path(__file__).resolve().parents[1]
++signer=Signing(); signer.load_key(str(root/'resource/dfu_key/chameleon.pem'))
++(root/'dist').mkdir(exist_ok=True)
++Package(debug_mode=False, hw_version=0, app_version=1, sd_req=[0x100], sd_id=[0x100],
++        app_fw=str(root/'firmware/objects/application.hex'), signer=signer).generate_package(str(root/'dist/mocha-ultra-dfu-app.zip'))
++print('Created dist/mocha-ultra-dfu-app.zip')
+diff --git a/tools/provenance.json b/tools/provenance.json
+new file mode 100644
+index 0000000..0cce153
+--- /dev/null
++++ b/tools/provenance.json
+@@ -0,0 +1,11 @@
++{
++  "name": "Mocha",
++  "version": "1.0.0",
++  "official_repo": "https://github.com/RfidResearchGroup/ChameleonUltra",
++  "official_commit": "5c99d4a39b424cc67ae82bbcfc8ba5ec8f69bf9c",
++  "mazha_repo": "https://github.com/Mazha0309/ChameleonUltra-mazha0309",
++  "mazha_commit": "1f44d9a4c66258f2ef16cb90b5262a9d30b0ad98",
++  "checked_date": "2026-10-11",
++  "device": "ultra",
++  "flashed": false
++}
+diff --git a/tools/requirements-build.txt b/tools/requirements-build.txt
+new file mode 100644
+index 0000000..5e7dc32
+--- /dev/null
++++ b/tools/requirements-build.txt
+@@ -0,0 +1,6 @@
++# Install nrfutil==6.1.7 separately with --no-deps; no BLE DFU driver needed.
++ecdsa==0.19.2
++intelhex==2.3.0
++protobuf==3.20.3
++six==1.17.0
++pyserial==3.5
+diff --git a/tools/verify_dfu.py b/tools/verify_dfu.py
+new file mode 100644
+index 0000000..6f589d6
+--- /dev/null
++++ b/tools/verify_dfu.py
+@@ -0,0 +1,27 @@
++#!/usr/bin/env python3
++"""Validate signed application-only Nordic DFU package without a device."""
++import hashlib
++import json
++import sys
++import zipfile
++from pathlib import Path
++from nordicsemi.dfu.init_packet_pb import InitPacketPB
++from nordicsemi.dfu.signing import Signing
++
++root = Path(__file__).resolve().parents[1]
++path = Path(sys.argv[1]) if len(sys.argv)>1 else root/'dist/mocha-ultra-dfu-app.zip'
++with zipfile.ZipFile(path) as z:
++    assert z.testzip() is None
++    manifest=json.loads(z.read('manifest.json'))['manifest']
++    assert set(manifest)=={'application'}, 'must not include bootloader or SoftDevice'
++    entry=manifest['application']; binary=z.read(entry['bin_file']); packet=InitPacketPB(from_bytes=z.read(entry['dat_file']))
++    init=packet.packet.signed_command.command.init
++    assert init.hw_version==0 and list(init.sd_req)==[0x100]
++    assert init.fw_version==1 and init.app_size==len(binary)
++    assert init.sd_size==0 and init.bl_size==0 and not init.is_debug
++    assert init.hash.hash==hashlib.sha256(binary).digest()[::-1]
++    signature=packet.packet.signed_command.signature
++    signer=Signing(); signer.load_key(str(root/'resource/dfu_key/chameleon.pem'))
++    assert signer.verify(packet.get_init_command_bytes(),signature[31::-1]+signature[63:31:-1]), 'ECDSA signature mismatch'
++    assert b'Mocha-1.0.0-' in binary and b'Mocha/1;slots=16;base=5c99d4a' in binary
++    print(json.dumps({'package':path.name,'type':'application','hw_version':0,'sd_req':'0x0100','application_size':len(binary),'signature':'ECDSA P-256/SHA-256 verified','sha256':hashlib.sha256(path.read_bytes()).hexdigest()},indent=2))

@@ -1,0 +1,222 @@
+Chameleon Ultra <Application>: reader and tag emulation module enable.
+rm -rf ../objects
+Chameleon Ultra <Application>: reader and tag emulation module enable.
+mkdir ../objects 
+cd ../objects && mkdir application
+Compiling file: hw_connect.c
+Compiling file: libc_nano_stubs.c
+Compiling file: app_main.c
+Compiling file: app_cmd.c
+Compiling file: ble_main.c
+Compiling file: rfid_main.c
+Compiling file: settings.c
+Compiling file: usb_main.c
+Compiling file: rgb_marquee.c
+Compiling file: bsp_delay.c
+Compiling file: bsp_time.c
+Compiling file: bsp_wdt.c
+Compiling file: byte_mirror.c
+Compiling file: crc_utils.c
+Compiling file: hex_utils.c
+Compiling file: ulc_3des.c
+Compiling file: mf1_crapto1.c
+Compiling file: mf1_crypto1.c
+Compiling file: parity.c
+Compiling file: polling.c
+Compiling file: tag_emulation.c
+Compiling file: tag_persistence.c
+Compiling file: crypto1_helper.c
+Compiling file: nfc_14a.c
+Compiling file: nfc_14a_4.c
+Compiling file: nfc_mf1.c
+Compiling file: nfc_mf0_ntag.c
+Compiling file: nfc_seos.c
+Compiling file: lf_tag_em.c
+Compiling file: fskdemod.c
+Compiling file: circular_buffer.c
+Compiling file: manchester.c
+Compiling file: psk1.c
+Compiling file: em410x.c
+Compiling file: hidprox.c
+Compiling file: pac.c
+Compiling file: ioprox.c
+Compiling file: viking.c
+Compiling file: jablotron.c
+Compiling file: diphase.c
+Compiling file: wiegand.c
+Compiling file: idteck.c
+Compiling file: dataframe.c
+Compiling file: delayed_reset.c
+Compiling file: fds_util.c
+Compiling file: syssleep.c
+Compiling file: timeslot.c
+Assembling file: gcc_startup_nrf52840.S
+Compiling file: nrf_log_backend_rtt.c
+Compiling file: nrf_log_backend_serial.c
+Compiling file: nrf_log_default_backends.c
+Compiling file: nrf_log_frontend.c
+Compiling file: nrf_log_str_formatter.c
+Compiling file: app_button.c
+Compiling file: app_error.c
+Compiling file: app_error_handler_gcc.c
+Compiling file: app_error_weak.c
+Compiling file: app_fifo.c
+Compiling file: app_scheduler.c
+Compiling file: app_timer2.c
+Compiling file: app_usbd.c
+Compiling file: app_usbd_cdc_acm.c
+Compiling file: app_usbd_core.c
+Compiling file: app_usbd_serial_num.c
+Compiling file: app_usbd_string_desc.c
+Compiling file: app_util_platform.c
+Compiling file: drv_rtc.c
+Compiling file: hardfault_handler_gcc.c
+Compiling file: hardfault_implementation.c
+Compiling file: nrf_assert.c
+Compiling file: nrf_atfifo.c
+Compiling file: nrf_atflags.c
+Compiling file: nrf_atomic.c
+Compiling file: nrf_balloc.c
+Compiling file: nrf_fprintf.c
+Compiling file: nrf_fprintf_format.c
+Compiling file: nrf_memobj.c
+Compiling file: nrf_pwr_mgmt.c
+Compiling file: nrf_ringbuf.c
+Compiling file: nrf_section_iter.c
+Compiling file: nrf_sortlist.c
+Compiling file: nrf_strerror.c
+Compiling file: nrf_queue.c
+Compiling file: nrf_fstorage.c
+Compiling file: nrf_fstorage_sd.c
+Compiling file: fds.c
+Compiling file: system_nrf52840.c
+Compiling file: nrf_drv_clock.c
+Compiling file: nrf_drv_power.c
+Compiling file: nrf_drv_rng.c
+Compiling file: nrf_drv_spi.c
+Compiling file: nrf_drv_ppi.c
+Compiling file: nrfx_atomic.c
+Compiling file: nrfx_saadc.c
+Compiling file: nrfx_clock.c
+Compiling file: nrfx_gpiote.c
+Compiling file: nrfx_power.c
+Compiling file: nrfx_prs.c
+Compiling file: nrfx_systick.c
+Compiling file: nrfx_usbd.c
+Compiling file: nrfx_nfct.c
+Compiling file: nrfx_timer.c
+Compiling file: nrfx_lpcomp.c
+Compiling file: nrfx_pwm.c
+Compiling file: nrfx_spi.c
+Compiling file: nrfx_rng.c
+Compiling file: nrfx_ppi.c
+Compiling file: nrfx_wdt.c
+Compiling file: SEGGER_RTT.c
+Compiling file: SEGGER_RTT_Syscalls_GCC.c
+Compiling file: SEGGER_RTT_printf.c
+Compiling file: ble_advdata.c
+Compiling file: ble_advertising.c
+Compiling file: ble_conn_params.c
+Compiling file: ble_conn_state.c
+Compiling file: ble_link_ctx_manager.c
+Compiling file: ble_srv_common.c
+Compiling file: nrf_ble_gatt.c
+Compiling file: utf.c
+Compiling file: ble_nus.c
+Compiling file: ble_bas.c
+Compiling file: nrf_ble_qwr.c
+Compiling file: nrf_sdh.c
+Compiling file: nrf_sdh_ble.c
+Compiling file: nrf_sdh_soc.c
+Compiling file: auth_status_tracker.c
+Compiling file: gatt_cache_manager.c
+Compiling file: gatts_cache_manager.c
+Compiling file: id_manager.c
+Compiling file: nrf_ble_lesc.c
+Compiling file: peer_data_storage.c
+Compiling file: peer_database.c
+Compiling file: peer_id.c
+Compiling file: peer_manager.c
+Compiling file: peer_manager_handler.c
+Compiling file: pm_buffer.c
+Compiling file: security_dispatcher.c
+Compiling file: security_manager.c
+Compiling file: nrf_hw_backend_init.c
+Compiling file: nrf_hw_backend_rng.c
+Compiling file: nrf_hw_backend_rng_mbedtls.c
+Compiling file: nrf_crypto_aead.c
+Compiling file: nrf_crypto_aes.c
+Compiling file: nrf_crypto_aes_shared.c
+Compiling file: nrf_crypto_ecc.c
+Compiling file: nrf_crypto_ecdh.c
+Compiling file: nrf_crypto_ecdsa.c
+Compiling file: nrf_crypto_eddsa.c
+Compiling file: nrf_crypto_error.c
+Compiling file: nrf_crypto_hash.c
+Compiling file: nrf_crypto_hkdf.c
+Compiling file: nrf_crypto_hmac.c
+Compiling file: nrf_crypto_init.c
+Compiling file: nrf_crypto_rng.c
+Compiling file: nrf_crypto_shared.c
+Compiling file: cc310_backend_aes.c
+Compiling file: cc310_backend_aes_aead.c
+Compiling file: cc310_backend_chacha_poly_aead.c
+Compiling file: cc310_backend_ecc.c
+Compiling file: cc310_backend_ecdh.c
+Compiling file: cc310_backend_ecdsa.c
+Compiling file: cc310_backend_eddsa.c
+Compiling file: cc310_backend_hash.c
+Compiling file: cc310_backend_hmac.c
+Compiling file: cc310_backend_init.c
+Compiling file: cc310_backend_mutex.c
+Compiling file: cc310_backend_rng.c
+Compiling file: cc310_backend_shared.c
+Compiling file: oberon_backend_chacha_poly_aead.c
+Compiling file: oberon_backend_ecc.c
+Compiling file: oberon_backend_ecdh.c
+Compiling file: oberon_backend_ecdsa.c
+Compiling file: oberon_backend_eddsa.c
+Compiling file: oberon_backend_hash.c
+Compiling file: oberon_backend_hmac.c
+Compiling file: mf1_toolbox.c
+Compiling file: rc522.c
+Compiling file: lf_125khz_radio.c
+Compiling file: lf_em410x_data.c
+Compiling file: lf_em4x05_data.c
+Compiling file: lf_gap.c
+Compiling file: lf_reader_generic.c
+Compiling file: lf_reader_data.c
+Compiling file: lf_reader_main.c
+Compiling file: lf_t55xx_data.c
+Compiling file: lf_hidprox_data.c
+Compiling file: lf_pac_data.c
+Compiling file: lf_ioprox_data.c
+Compiling file: lf_viking_data.c
+Compiling file: lf_jablotron_data.c
+Linking target: ../objects/application.out
+   text	   data	    bss	    dec	    hex	filename
+ 306988	    788	 108968	 416744	  65be8	../objects/application.out
+Preparing: ../objects/application.hex
+Preparing: ../objects/application.bin
+DONE application
+test_cli_identity_gate_and_serial_frame (__main__.FirmwareTests) ... ok
+test_polling_scheduler_and_transaction_lock (__main__.FirmwareTests) ... ok
+test_protocol_has_no_collisions_and_preserves_official (__main__.FirmwareTests) ... ok
+test_settings_migration_and_flash_failure (__main__.FirmwareTests) ... ok
+test_slot_migration_preserves_types_and_skip (__main__.FirmwareTests) ... ok
+test_usb_animation_reset_colors_and_timing (__main__.FirmwareTests) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 1.265s
+
+OK
+Created dist/mocha-ultra-dfu-app.zip
+{
+  "package": "mocha-ultra-dfu-app.zip",
+  "type": "application",
+  "hw_version": 0,
+  "sd_req": "0x0100",
+  "application_size": 307776,
+  "signature": "ECDSA P-256/SHA-256 verified",
+  "sha256": "8e23763d434c0694f2a5cfed022b882672e900be3eefc49e9a39bf5c753ee3ee"
+}

@@ -1,6 +1,6 @@
 # Mocha 1.0.0 — Chameleon Ultra
 
-这是可构建的官方最新固件移植版本，保留官方 Ultralight C / 3DES、SEOS 和新 LF 协议源码。只为 **Ultra** 构建；未刷入设备、未访问串口、未写卡数据、未发布或推送。
+这是可构建的官方最新固件移植版本，保留官方 Ultralight C / 3DES、SEOS 和新 LF 协议源码。只为 **Ultra** 构建；本次构建未刷入设备、未访问串口、未写卡数据。
 
 ## 固定来源与许可证
 
@@ -9,7 +9,7 @@
 - Mazha 参考：`1f44d9a4c66258f2ef16cb90b5262a9d30b0ad98`，通过其 main 的 ls-remote 核对。
 - [Mazha 来源](https://github.com/Mazha0309/ChameleonUltra-mazha0309)，自定义改动起点 `1c9e8e8`，017 发布包提交 `6268247`。
 - 分支 `codex/mocha`。保留原 AUTHORS、GPLv3 LICENSE、Nordic SDK 和第三方许可证。Mocha 改动及控制工具按 GPLv3 提供；SDK 等仍遵守各自许可证。
-- `dist/build-info.json` 记录最终源码提交、工具版本和产物校验和。`dist/mocha-source.tar.gz` 为对应源码，`dist/mocha-from-official.patch` 为相对固定官方基线的补丁。
+- `releases/mocha-1.0.0/build-info.json` 记录最终源码提交、工具版本和产物校验和。`releases/mocha-1.0.0/mocha-source.tar.gz` 为对应源码，`releases/mocha-1.0.0/mocha-from-official.patch` 为相对固定官方基线的补丁。
 
 ## 功能和实际行为
 
@@ -41,14 +41,14 @@ Mocha 设置存储 schema 为 `0x4D01`，16 字节：保留官方位置的长按
 Python + `pyserial==3.5`。先关闭官方 GUI 和其他串口客户端。工具需要显式指定端口，在每次连接后先读取命令 1100 严格匹配 Mocha v1 身份，失败时拒绝任何写操作。macOS 使用 TIOCEXCL 防止后续串口争用。以下是用法示例，本次未执行设备操作：
 
 ```sh
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 status
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 interval 500
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 skip 0x8001  # 跳过槽1、16
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 polling on
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 button a long polling
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 button b long dfu
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 ab-reboot off
-python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 select 16
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE status
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE interval 500
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE skip 0x8001  # 跳过槽1、16
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE polling on
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE button a long polling
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE button b long dfu
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE ab-reboot off
+python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE select 16
 ```
 
 | 编号 | Mocha 操作 | 数据 |
