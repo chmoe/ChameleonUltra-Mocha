@@ -809,9 +809,6 @@ void nfc_tag_14a_sense_switch(bool enable) {
     if (m_nfc_sense_state == NFC_SENSE_STATE_NONE || m_nfc_sense_state == NFC_SENSE_STATE_DISABLE) {
         if (enable) {
             rf_clock_acquire(RF_CLOCK_HF);
-            // SYSTEMOFF field wake leaves the analog NFCT state alive. Reset
-            // the block before installing a fresh driver and RX configuration.
-            nrf_nfct_reset();
             m_nfc_sense_state = NFC_SENSE_STATE_ENABLE;
             // Initialized interrupt event and callback
             nrfx_nfct_config_t nnct = { .rxtx_int_mask = (uint32_t)0xFFFFFFFF, .cb = nfc_tag_14a_event_callback };
