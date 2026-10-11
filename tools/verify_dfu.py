@@ -23,5 +23,5 @@ with zipfile.ZipFile(path) as z:
     signature=packet.packet.signed_command.signature
     signer=Signing(); signer.load_key(str(root/'resource/dfu_key/chameleon.pem'))
     assert signer.verify(packet.get_init_command_bytes(),signature[31::-1]+signature[63:31:-1]), 'ECDSA signature mismatch'
-    assert b'Mocha-1.0.2-' in binary and b'Mocha/1;slots=16;base=5c99d4a' in binary
+    assert b'Mocha-1.0.0-' in binary and b'Mocha/1;slots=16;base=5c99d4a' in binary
     print(json.dumps({'package':path.name,'type':'application','hw_version':0,'sd_req':'0x0100','application_size':len(binary),'signature':'ECDSA P-256/SHA-256 verified','sha256':hashlib.sha256(path.read_bytes()).hexdigest()},indent=2))
