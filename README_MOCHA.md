@@ -104,3 +104,5 @@ NFCT 启用时主动检查已有场，并通过驱动的正常 FIELD_DETECTED �
 HF/LF 模拟共同持有 HFXO 请求，只有两个模块都关闭后才释放；避免 HF 轮询关闭 LF 模块时停止高频晶振。
 
 只读诊断命令 1109 返回十二个网络序 uint32：场到来/离开、接收帧、SELECT 次数、FIELDSTATUS、HFCLKSTAT、中断掩码、协议状态、轮询暂停状态、感应状态、NFCTAGSTATE、RXD.AMOUNT。用于核对实际场、时钟与接收状态，不修改卡片。
+
+感应驱动首次初始化前完整复位 NFCT 外设，清除 SYSTEMOFF 场唤醒残留的硬件状态。
