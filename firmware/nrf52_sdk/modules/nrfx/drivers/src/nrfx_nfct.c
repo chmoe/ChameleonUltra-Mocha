@@ -432,7 +432,11 @@ static inline nrfx_err_t nrfx_nfct_field_timer_config(void)
  */
 static void timer_nfc_close_handle(void *arg) {
     NRFX_CRITICAL_SECTION_ENTER();
-    nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
+    // A timeout queued before stop/reinit must not shut down a new session.
+    if (m_nfct_cb.state != NRFX_DRV_STATE_UNINITIALIZED && !m_nfct_cb.field_on)
+    {
+        nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
+    }
     NRFX_CRITICAL_SECTION_EXIT();
 }
 

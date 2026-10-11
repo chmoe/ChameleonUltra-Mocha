@@ -266,6 +266,41 @@ int main(void) {
 }
 """)
 
+    def test_nfct_lifecycle_and_stale_close_timeout(self):
+        text=(SRC.parents[1]/'nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c').read_text()
+        def extract(name):
+            start=text.index('static void '+name+'('); first=text.index('{',start); depth=1; end=first+1
+            while depth:
+                depth+=(text[end]=='{')-(text[end]=='}'); end+=1
+            return text[start:end]
+        program=r"""
+#include "common.h"
+#define NRF52840_XXAA 1
+#define NRFX_DRV_STATE_UNINITIALIZED 0
+#define NRF_NFCT_TASK_SENSE 1
+#define NRFX_CRITICAL_SECTION_ENTER()
+#define NRFX_CRITICAL_SECTION_EXIT()
+static struct { bool field_on; int state; } m_nfct_cb;
+static struct { bool validation_pending, fieldevents_filter_active, is_hfclk_on, is_delayed; } m_timer_workaround;
+static int senses;
+static void nrf_nfct_task_trigger(int task) { assert(task==1); senses++; }
+"""+extract('nrfx_nfct_session_clear')+extract('timer_nfc_close_handle')+r"""
+int main(void) {
+ m_nfct_cb.field_on=true;
+ m_timer_workaround.validation_pending=true;
+ m_timer_workaround.fieldevents_filter_active=true;
+ m_timer_workaround.is_hfclk_on=true; m_timer_workaround.is_delayed=true;
+ nrfx_nfct_session_clear();
+ assert(!m_nfct_cb.field_on && !m_timer_workaround.validation_pending && !m_timer_workaround.fieldevents_filter_active);
+ assert(!m_timer_workaround.is_hfclk_on && !m_timer_workaround.is_delayed);
+ m_nfct_cb.state=1; m_nfct_cb.field_on=true; timer_nfc_close_handle(0); assert(senses==0);
+ m_nfct_cb.state=0; m_nfct_cb.field_on=false; timer_nfc_close_handle(0); assert(senses==0);
+ m_nfct_cb.state=1; timer_nfc_close_handle(0); assert(senses==1);
+ return 0;
+}
+"""
+        self.compile_run({'common.h':COMMON},program)
+
     def test_rf_idle_rearms_battery_standby(self):
         files={'syssleep.c':(SRC/'utils/syssleep.c').read_text(),
                'syssleep.h':(SRC/'utils/syssleep.h').read_text()}
