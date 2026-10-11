@@ -814,6 +814,9 @@ void nfc_tag_14a_sense_switch(bool enable) {
             //Directly anti -initialization NFC peripherals can turn off NFC field induction
             // SDK inside us to call us nrfx_nfct_disable
             nrfx_nfct_uninit();
+            m_tag_state_14a = NFC_TAG_STATE_14A_IDLE;
+            m_is_responded = false;
+            polling_note_hf_field(false);
         }
     }
 }

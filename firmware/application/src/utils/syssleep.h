@@ -2,6 +2,7 @@
 #define SYS_SLEEP_H__
 
 #include <stdint.h>
+#include <stdbool.h>
 
 //           Wake up equipment
 #define SLEEP_DELAY_MS_BUTTON_WAKEUP            8000    // The sleep delay of the button awakened
@@ -18,6 +19,7 @@
 
 
 void sleep_timer_init(void);
+void sleep_rf_update(bool field_present);
 void sleep_timer_start(uint32_t time_ms);
 void sleep_timer_stop(void);
 void sleep_system_run(void (*sysOffSleep)(), void (*sysOnSleep)());

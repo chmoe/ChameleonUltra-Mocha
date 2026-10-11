@@ -74,3 +74,29 @@ void sleep_system_run(void (*sysOffSleep)(), void (*sysOnSleep)()) {
         sysOnSleep();
     }
 }
+
+// Reconcile physical reader presence in the main loop. FIELD_LOST can be
+// swallowed during sensor teardown/reinit; do not depend on that interrupt
+// alone to release the emulating flag and arm battery standby.
+void sleep_rf_update(bool field_present) {
+    static bool seen_field;
+    static bool checking_idle;
+    static uint32_t idle_since;
+    if (field_present) {
+        if (!seen_field) sleep_timer_stop();
+        seen_field = true;
+        checking_idle = false;
+        return;
+    }
+    if (!seen_field && !g_is_tag_emulating) return;
+    if (!checking_idle) {
+        idle_since = app_timer_cnt_get();
+        checking_idle = true;
+        return;
+    }
+    if (app_timer_cnt_diff_compute(app_timer_cnt_get(), idle_since) < APP_TIMER_TICKS(100)) return;
+    seen_field = false;
+    checking_idle = false;
+    g_is_tag_emulating = false;
+    sleep_timer_start(SLEEP_DELAY_MS_FIELD_NFC_LOST);
+}

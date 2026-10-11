@@ -266,6 +266,47 @@ int main(void) {
 }
 """)
 
+    def test_rf_idle_rearms_battery_standby(self):
+        files={'syssleep.c':(SRC/'utils/syssleep.c').read_text(),
+               'syssleep.h':(SRC/'utils/syssleep.h').read_text()}
+        for h in ['nrf_log.h','nrf_log_ctrl.h','nrf_log_default_backends.h']: files[h]=COMMON
+        files['nrfx_power.h']=COMMON+"""
+#define NRFX_POWER_USB_STATE_DISCONNECTED 0
+static int usb_state;
+static int nrfx_power_usbstatus_get(void) { return usb_state; }
+"""
+        files['app_timer.h']=COMMON+"""
+typedef int ret_code_t;
+#define APP_TIMER_DEF(x) static int x
+#define APP_TIMER_MODE_SINGLE_SHOT 1
+#define APP_TIMER_TICKS(x) (x)
+#define APP_ERROR_CHECK(x) assert((x)==0)
+static uint32_t now; static int arms, stops;
+static int app_timer_create(int *a,int b,void (*f)(void*)) { return 0; }
+static int app_timer_start(int a,uint32_t ticks,void *p) { assert(ticks==3000); arms++; return 0; }
+static int app_timer_stop(int a) { stops++; return 0; }
+static uint32_t app_timer_cnt_get(void) { return now; }
+static uint32_t app_timer_cnt_diff_compute(uint32_t a,uint32_t b) { return (a-b)&0xffffff; }
+"""
+        self.compile_run(files, r"""
+#include "syssleep.c"
+bool g_is_ble_connected, g_is_tag_emulating;
+volatile bool m_is_field_on;
+int main(void) {
+ sleep_timer_init(); sleep_rf_update(false); assert(arms==0);
+ g_is_tag_emulating=true; sleep_rf_update(true);
+ now=1; sleep_rf_update(false); now=100; sleep_rf_update(false); assert(arms==0);
+ now=101; sleep_rf_update(false); assert(!g_is_tag_emulating && arms==1);
+ for(int i=0;i<20;i++) sleep_rf_update(false); assert(arms==1); // not restarted each loop
+ sleep_rf_update(true); now=102; sleep_rf_update(false); now=151; sleep_rf_update(true);
+ assert(arms==1); now=200; sleep_rf_update(false); now=300; sleep_rf_update(false); assert(arms==2);
+ usb_state=1; g_is_tag_emulating=true; now=400; sleep_rf_update(false); now=500; sleep_rf_update(false); assert(arms==2);
+ usb_state=0; g_is_ble_connected=true; sleep_rf_update(true); now=600; sleep_rf_update(false); now=700; sleep_rf_update(false); assert(arms==2);
+ g_is_ble_connected=false; now=0xfffff0; sleep_rf_update(true); sleep_rf_update(false); now=0x60; sleep_rf_update(false); assert(arms==3);
+ return 0;
+}
+""")
+
     def test_protocol_has_no_collisions_and_preserves_official(self):
         text=(SRC/'data_cmd.h').read_text()
         pairs=re.findall(r'#define (DATA_CMD_\w+)\s+\((\d+)\)',text)

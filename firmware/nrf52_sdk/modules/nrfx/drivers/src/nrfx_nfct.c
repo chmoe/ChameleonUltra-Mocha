@@ -59,6 +59,7 @@ typedef struct
 {
     const nrfx_timer_t timer;                     /**< Timer instance that supports the correct NFC field detection. */
 #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
+    bool               validation_pending;       /**< Activation validation belongs to this driver lifetime. */
     bool               fieldevents_filter_active; /**< Flag that indicates that the field events are ignored. */
     bool               is_hfclk_on;               /**< HFCLK has started - one of the NFC activation conditions. */
     bool               is_delayed;                /**< Required time delay has passed - one of the NFC activation conditions. */
@@ -148,6 +149,22 @@ typedef struct
 } nrfx_nfct_control_block_t;
 
 static nrfx_nfct_control_block_t m_nfct_cb;
+
+// Reset all field-event bookkeeping when the sensor lifetime changes.
+static void nrfx_nfct_session_clear(void)
+{
+    // A new sensing lifetime must generate FIELD_DETECTED even when the
+    // previous lifetime was stopped while the reader field was still on.
+    m_nfct_cb.field_on = false;
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
+    m_timer_workaround.validation_pending = false;
+    m_timer_workaround.fieldevents_filter_active = false;
+    m_timer_workaround.is_hfclk_on = false;
+    m_timer_workaround.is_delayed = false;
+#elif defined(USE_TIMER_WORKAROUND)
+    m_timer_workaround.field_state_cnt = 0;
+#endif
+}
 
 /**
  * @brief Common part of the setup used for the NFCT initialization and reinitialization.
@@ -270,11 +287,10 @@ static void nrfx_nfct_field_event_handler(volatile nrfx_nfct_field_state_t field
 #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
 static void nrfx_nfct_activate_check(void)
 {
-    static bool is_field_validation_pending = false;
 
-    if (is_field_validation_pending)
+    if (m_timer_workaround.validation_pending)
     {
-        is_field_validation_pending                  = false;
+        m_timer_workaround.validation_pending                  = false;
         m_timer_workaround.fieldevents_filter_active = false;
 
         // Check the field status and take action if field is lost.
@@ -285,7 +301,7 @@ static void nrfx_nfct_activate_check(void)
     if ((m_timer_workaround.is_hfclk_on) && (m_timer_workaround.is_delayed))
     {
         nrf_nfct_task_trigger(NRF_NFCT_TASK_ACTIVATE);
-        is_field_validation_pending = true;
+        m_timer_workaround.validation_pending = true;
 
         // Start the timer second time to validate whether the tag has locked to the field.
         nrfx_timer_clear(&m_timer_workaround.timer);
@@ -456,6 +472,7 @@ nrfx_err_t nrfx_nfct_init(nrfx_nfct_config_t const * p_config)
         return NRFX_ERROR_INVALID_STATE;
     }
 
+    nrfx_nfct_session_clear();
     m_nfct_cb.config = *p_config;
     nrfx_nfct_hw_init_setup();
 
@@ -510,6 +527,7 @@ void nrfx_nfct_uninit(void)
     nrfx_timer_uninit(&m_timer_workaround.timer);
 #endif // defined(USE_TIMER_WORKAROUND)
 
+    nrfx_nfct_session_clear();
     m_nfct_cb.state = NRFX_DRV_STATE_UNINITIALIZED;
 }
 

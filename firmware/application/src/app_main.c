@@ -38,6 +38,8 @@ NRF_LOG_MODULE_REGISTER();
 #include "fds_util.h"
 #include "hex_utils.h"
 #include "polling.h"
+#include "lf_tag_em.h"
+#include "nfc_14a.h"
 #include "rfid_main.h"
 #include "syssleep.h"
 #include "tag_emulation.h"
@@ -1121,6 +1123,9 @@ int main(void) {
             nrf_pwr_mgmt_shutdown(NRF_PWR_MGMT_SHUTDOWN_RESET);
         }
         polling_process();
+        if (get_device_mode() == DEVICE_MODE_TAG) {
+            sleep_rf_update(nfc_tag_14a_field_present() || lf_reader_field_present());
+        }
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
         // Field generator rainbow animation
