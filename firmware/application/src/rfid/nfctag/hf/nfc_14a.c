@@ -685,7 +685,10 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             NRF_NFCT->TASKS_ACTIVATE = 1;
 #endif
 
-            //Directly enable receiving
+            // Activation is asynchronous on nRF52840; READY arms reception.
+            break;
+        }
+        case NRFX_NFCT_EVT_READY: {
             NRFX_NFCT_RX_BYTES
             break;
         }

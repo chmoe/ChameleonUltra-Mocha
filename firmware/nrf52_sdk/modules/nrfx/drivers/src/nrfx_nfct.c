@@ -538,10 +538,11 @@ void nrfx_nfct_uninit(void)
 void nrfx_nfct_enable(void)
 {
     nrf_nfct_error_status_clear(NRFX_NFCT_ERROR_STATUS_ALL_MASK);
+    nrf_nfct_event_clear(NRF_NFCT_EVENT_READY);
     nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
 
     nrf_nfct_int_enable(NRF_NFCT_INT_FIELDDETECTED_MASK | NRF_NFCT_INT_ERROR_MASK |
-                        NRF_NFCT_INT_SELECTED_MASK);
+                        NRF_NFCT_INT_SELECTED_MASK | NRF_NFCT_INT_READY_MASK);
 #if !defined(NRF52832_XXAA) && !defined(NRF52832_XXAB)
     nrf_nfct_int_enable(NRF_NFCT_INT_FIELDLOST_MASK);
 #endif // !defined(NRF52832_XXAA) && !defined(NRF52832_XXAB)
@@ -813,6 +814,17 @@ void nrfx_nfct_irq_handler(void)
     if (current_field != NRFX_NFC_FIELD_STATE_NONE)
     {
         nrfx_nfct_field_event_handler(current_field);
+    }
+
+    if (NRFX_NFCT_EVT_ACTIVE(READY))
+    {
+        nrf_nfct_event_clear(NRF_NFCT_EVENT_READY);
+        // A READY left over from a lost field must not restart reception.
+        if (m_nfct_cb.field_on)
+        {
+            nrfx_nfct_evt_t nfct_evt = { .evt_id = NRFX_NFCT_EVT_READY };
+            NRFX_NFCT_CB_HANDLE(m_nfct_cb.config.cb, nfct_evt);
+        }
     }
 
     // ChameleonUltra: fix busy IRQ when HF field is on and a first frame got received

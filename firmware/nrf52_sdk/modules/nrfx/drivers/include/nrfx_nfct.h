@@ -89,6 +89,7 @@ typedef enum
 {
     NRFX_NFCT_EVT_FIELD_DETECTED = NRF_NFCT_INT_FIELDDETECTED_MASK, ///< External NFC field is detected.
     NRFX_NFCT_EVT_FIELD_LOST     = NRF_NFCT_INT_FIELDLOST_MASK,     ///< External NFC Field is lost.
+    NRFX_NFCT_EVT_READY          = NRF_NFCT_INT_READY_MASK,        ///< Peripheral activation completed.
     NRFX_NFCT_EVT_SELECTED       = NRF_NFCT_INT_SELECTED_MASK,      ///< Tag was selected by the poller.
     NRFX_NFCT_EVT_RX_FRAMESTART  = NRF_NFCT_INT_RXFRAMESTART_MASK,  ///< Data frame reception started.
     NRFX_NFCT_EVT_RX_FRAMEEND    = NRF_NFCT_INT_RXFRAMEEND_MASK,    ///< Data frame is received.
