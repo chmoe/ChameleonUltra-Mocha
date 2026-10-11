@@ -227,9 +227,9 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
 
 static data_frame_tx_t *cmd_processor_get_rf_diagnostics(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     if (length != 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
-    uint32_t payload[10];
+    uint32_t payload[12];
     nfc_tag_14a_get_diagnostics(payload);
-    for (uint8_t i = 0; i < 10; i++) payload[i] = U32HTONL(payload[i]);
+    for (uint8_t i = 0; i < 12; i++) payload[i] = U32HTONL(payload[i]);
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)payload);
 }
 

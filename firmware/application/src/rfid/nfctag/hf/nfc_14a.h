@@ -150,4 +150,4 @@ bool nfc_tag_14a_polling_quiesce(void);
 
 void nfc_tag_14a_polling_resume(void);
 
-void nfc_tag_14a_get_diagnostics(uint32_t output[10]);
+void nfc_tag_14a_get_diagnostics(uint32_t output[12]);

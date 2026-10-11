@@ -884,7 +884,7 @@ void nfc_tag_14a_polling_resume(void) {
     CRITICAL_REGION_EXIT();
 }
 
-void nfc_tag_14a_get_diagnostics(uint32_t output[10]) {
+void nfc_tag_14a_get_diagnostics(uint32_t output[12]) {
     CRITICAL_REGION_ENTER();
     output[0] = m_diag_detected;
     output[1] = m_diag_lost;
@@ -896,5 +896,7 @@ void nfc_tag_14a_get_diagnostics(uint32_t output[10]) {
     output[7] = m_tag_state_14a;
     output[8] = m_polling_rx_paused;
     output[9] = m_nfc_sense_state;
+    output[10] = NRF_NFCT->NFCTAGSTATE;
+    output[11] = NRF_NFCT->RXD.AMOUNT;
     CRITICAL_REGION_EXIT();
 }
