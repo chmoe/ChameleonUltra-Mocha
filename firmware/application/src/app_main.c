@@ -43,6 +43,7 @@ NRF_LOG_MODULE_REGISTER();
 #include "tag_emulation.h"
 #include "usb_main.h"
 #include "rgb_marquee.h"
+#include "usb_led_mode.h"
 #include "tag_persistence.h"
 #include "settings.h"
 
@@ -1013,7 +1014,12 @@ static void blink_usb_led_status(void) {
     uint8_t dir = (slot % 8) > 3 ? 1 : 0;
     static bool is_working = false;
     static uint8_t last_usb_mode;
-    uint8_t usb_mode = g_usb_port_opened ? 2 : 1;
+    static usb_led_mode_t led_mode;
+    bool usb_disconnected = nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED;
+    if (usb_disconnected) led_mode = (usb_led_mode_t){0};
+    bool show_connected = usb_led_mode_update(&led_mode,
+        !usb_disconnected && g_usb_port_opened, app_timer_cnt_get(), APP_TIMER_TICKS(1000));
+    uint8_t usb_mode = show_connected ? 2 : 1;
     if (usb_mode != last_usb_mode) {
         rgb_marquee_stop();
         last_usb_mode = usb_mode;
@@ -1029,7 +1035,7 @@ static void blink_usb_led_status(void) {
         // The light effect is enabled and can be displayed
         if (rgb_marquee_is_enabled()) {
             is_working = true;
-            if (g_usb_port_opened) {
+            if (show_connected) {
                 uint8_t animation_config = settings_get_animation_config();
                 if (animation_config == SettingsAnimationModeSymmetric) {
                     rgb_marquee_usb_open_symmetric(color);

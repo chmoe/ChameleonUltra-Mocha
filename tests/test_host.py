@@ -240,6 +240,32 @@ int main(void) {
 }
 """)
 
+    def test_usb_probe_does_not_change_led_mode(self):
+        self.compile_run({'common.h':COMMON,'usb_led_mode.h':(SRC/'usb_led_mode.h').read_text()}, r"""
+#include "common.h"
+#include "usb_led_mode.h"
+int main(void) {
+ usb_led_mode_t s={0};
+ for(uint32_t t=0;t<10000;t+=1000) {
+  assert(!usb_led_mode_update(&s,true,t,1000));
+  assert(!usb_led_mode_update(&s,true,t+500,1000));
+  assert(!usb_led_mode_update(&s,false,t+600,1000));
+ }
+ assert(!usb_led_mode_update(&s,true,10000,1000));
+ assert(!usb_led_mode_update(&s,true,10999,1000));
+ assert(usb_led_mode_update(&s,true,11000,1000));
+ assert(usb_led_mode_update(&s,false,12000,1000));
+ assert(usb_led_mode_update(&s,true,12500,1000));
+ assert(usb_led_mode_update(&s,false,14000,1000));
+ assert(!usb_led_mode_update(&s,false,15000,1000));
+ s=(usb_led_mode_t){0};
+ assert(!usb_led_mode_update(&s,true,0xffff00,1000));
+ assert(!usb_led_mode_update(&s,true,0x2e7,1000));
+ assert(usb_led_mode_update(&s,true,0x2e8,1000));
+ return 0;
+}
+""")
+
     def test_protocol_has_no_collisions_and_preserves_official(self):
         text=(SRC/'data_cmd.h').read_text()
         pairs=re.findall(r'#define (DATA_CMD_\w+)\s+\((\d+)\)',text)
