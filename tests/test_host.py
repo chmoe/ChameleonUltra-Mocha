@@ -106,21 +106,25 @@ static void light_up_by_slot(void) { displays++; }
         files['tag_emulation.h']=COMMON+'''#define TAG_MAX_SLOT_NUM 16
 #define TAG_SENSE_HF 2
 #define TAG_SENSE_LF 1
-static uint8_t slot; static bool hf[16], lf[16], skip[16]; static int switches;
+static uint8_t slot; static bool hf[16], lf[16], skip[16]; static int switches, hf_restarts;
 static uint8_t tag_emulation_get_slot(void) { return slot; }
 static uint8_t tag_emulation_slot_find_next(uint8_t n) { for(int i=0;i<16;i++) { n=(n+1)%16; if(hf[n]||lf[n]) return n; } return n; }
 static bool tag_emulation_slot_polling_skip(uint8_t n) { return skip[n]; }
 static bool is_slot_enabled(uint8_t n,int sense) { return sense==2?hf[n]:lf[n]; }
-static void tag_emulation_change_slot(uint8_t n,bool b) { slot=n; switches++; }
+static void tag_emulation_change_slot(uint8_t n,bool b) { slot=n; switches++; if(b) hf_restarts++; }
+static void tag_emulation_sense_switch(int sense,bool enable) { assert(sense==TAG_SENSE_LF && enable); }
 '''
         files['lf_tag_em.h']=COMMON+'''static bool lf_field, lf_boundary, pause;
 static bool lf_reader_field_present(void) { return lf_field; }
 static bool lf_polling_pause_at_boundary(void) { pause=true; return lf_boundary; }
 static void lf_polling_resume(void) { pause=false; }
+static void lf_tag_125khz_sense_switch(bool enable) { assert(!enable); }
 '''
         files['nfc_14a.h']=COMMON+'''static bool hf_field, quiesce_ok=true;
 static bool nfc_tag_14a_field_present(void) { return hf_field; }
 static bool nfc_tag_14a_polling_quiesce(void) { return quiesce_ok; }
+static int hf_resumes;
+static void nfc_tag_14a_polling_resume(void) { hf_resumes++; }
 '''
         self.compile_run(files, '''#include "polling.c"
 static void tick(void) { now+=500; polling_timer_handler(0); polling_process(); }
@@ -128,6 +132,7 @@ int main(void) {
  polling_init(); polling_start(); tick(); assert(switches==0);
  hf[0]=hf[8]=hf[15]=true; hf_field=true; polling_note_hf_field(true);
  polling_process(); tick(); assert(slot==8); skip[15]=true; tick(); assert(slot==0);
+ assert(hf_resumes==2 && hf_restarts==0);
  polling_lock_hf_transaction(); tick(); assert(slot==0);
  hf_field=false; polling_note_hf_field(false); polling_process(); assert(slot==0);
  hf_field=true; polling_process(); quiesce_ok=false; tick(); assert(slot==0);

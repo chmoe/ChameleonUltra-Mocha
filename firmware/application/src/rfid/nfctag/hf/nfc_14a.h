@@ -147,3 +147,5 @@ bool nfc_tag_14a_is_reset_enable();
 bool nfc_tag_14a_field_present(void);
 
 bool nfc_tag_14a_polling_quiesce(void);
+
+void nfc_tag_14a_polling_resume(void);

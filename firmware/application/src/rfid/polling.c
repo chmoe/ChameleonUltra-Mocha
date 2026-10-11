@@ -128,7 +128,15 @@ void polling_process(void) {
             m_polling_pending = true;
             return;
         }
-        tag_emulation_change_slot(slot_new, true);
+        if (m_session_hf) {
+            // Keep NFCT field/clock state alive while replacing card data.
+            lf_tag_125khz_sense_switch(false);
+            tag_emulation_change_slot(slot_new, false);
+            tag_emulation_sense_switch(TAG_SENSE_LF, true);
+            nfc_tag_14a_polling_resume();
+        } else {
+            tag_emulation_change_slot(slot_new, true);
+        }
         // RF polling feedback must not block the main loop for a sweep.
         light_up_by_slot();
     } else {

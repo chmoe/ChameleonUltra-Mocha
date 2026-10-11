@@ -26,9 +26,12 @@ NRF_LOG_MODULE_REGISTER();
 #define NRF_NFCT_PARITY_FRAMECONFIG 0x04;
 #endif
 
+static bool m_polling_rx_paused;
+
 //Use macro definition data to receive data enable to achieve
 #define NRFX_NFCT_RX_BYTES                                                                                          \
     do {                                                                                                            \
+        if (m_polling_rx_paused) break;                                                                            \
         NRF_NFCT->RXD.FRAMECONFIG = NRF_NFCT_PARITY_FRAMECONFIG;                                                    \
         NRF_NFCT->PACKETPTR = (uint32_t)m_nfc_rx_buffer;                                                            \
         NRF_NFCT->MAXLEN = ((uint32_t)MAX_NFC_RX_BUFFER_SIZE << NFCT_MAXLEN_MAXLEN_Pos) & NFCT_MAXLEN_MAXLEN_Msk;   \
@@ -814,6 +817,7 @@ void nfc_tag_14a_sense_switch(bool enable) {
             //Directly anti -initialization NFC peripherals can turn off NFC field induction
             // SDK inside us to call us nrfx_nfct_disable
             nrfx_nfct_uninit();
+            m_polling_rx_paused = false;
             m_tag_state_14a = NFC_TAG_STATE_14A_IDLE;
             m_is_responded = false;
             polling_note_hf_field(false);
@@ -846,7 +850,28 @@ bool nfc_tag_14a_polling_quiesce(void) {
     // animation work occurs in this short critical region.
     CRITICAL_REGION_ENTER();
     allowed = polling_hf_can_switch();
-    if (allowed) nfc_tag_14a_sense_switch(false);
+    if (allowed) {
+        m_polling_rx_paused = true;
+        nrf_nfct_int_disable(NRF_NFCT_INT_RXFRAMESTART_MASK | NRF_NFCT_INT_RXFRAMEEND_MASK |
+            NRF_NFCT_INT_RXERROR_MASK | NRF_NFCT_INT_TXFRAMESTART_MASK | NRF_NFCT_INT_TXFRAMEEND_MASK);
+        NRF_NFCT->EVENTS_RXFRAMEEND = 0;
+        NRF_NFCT->EVENTS_TXFRAMEEND = 0;
+        NRF_NFCT->EVENTS_RXERROR = 0;
+    }
     CRITICAL_REGION_EXIT();
     return allowed;
+}
+
+void nfc_tag_14a_polling_resume(void) {
+    CRITICAL_REGION_ENTER();
+    m_tag_state_14a = NFC_TAG_STATE_14A_IDLE;
+    m_is_responded = false;
+    m_polling_rx_paused = false;
+    if (nfc_tag_14a_field_present()) {
+        g_is_tag_emulating = true;
+        sleep_timer_stop();
+        nfc_fdt_reset();
+        NRFX_NFCT_RX_BYTES
+    }
+    CRITICAL_REGION_EXIT();
 }
