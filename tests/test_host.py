@@ -307,6 +307,36 @@ int main(void) {
 """
         self.compile_run({'common.h':COMMON},program)
 
+    def test_nfct_field_loss_immediately_rearms_sensing(self):
+        text=(SRC.parents[1]/'nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c').read_text()
+        body=text.split('case NRFX_NFC_FIELD_STATE_OFF:',1)[1].split('            break;',1)[0]
+        program='#include "common.h"\n'+r"""
+#define NRF52840_XXAA 1
+#define NRF_NFCT_TASK_SENSE 1
+#define NRFX_NFCT_RX_INT_MASK 2
+#define NRFX_NFCT_TX_INT_MASK 4
+#define NRFX_NFCT_EVT_FIELD_LOST 5
+#define NRFX_NFCT_CB_HANDLE(cb,event) notify(event)
+typedef struct { int evt_id; } nrfx_nfct_evt_t;
+static struct { bool field_on; } m_nfct_cb;
+static int m_nfc_close_timer, stops, senses, disabled, notifications;
+static void app_timer_stop(int timer) { stops++; }
+static void nrf_nfct_task_trigger(int task) { assert(task==1); senses++; }
+static void nrf_nfct_int_disable(int mask) { disabled=mask; }
+static void nrfx_nfct_frame_delay_max_set(bool reset) { assert(reset); }
+static void notify(nrfx_nfct_evt_t event) { assert(!m_nfct_cb.field_on && senses && disabled==6 && event.evt_id==5); notifications++; }
+static void field_off(void) { nrfx_nfct_evt_t nfct_evt;
+"""+body+r"""
+}
+int main(void) {
+ m_nfct_cb.field_on=true; field_off();
+ assert(stops==1 && senses==1 && notifications==1 && !m_nfct_cb.field_on);
+ field_off(); assert(stops==1 && senses==1 && notifications==1);
+ return 0;
+}
+"""
+        self.compile_run({"common.h":COMMON},program)
+
     def test_rf_idle_rearms_battery_standby(self):
         files={'syssleep.c':(SRC/'utils/syssleep.c').read_text(),
                'syssleep.h':(SRC/'utils/syssleep.h').read_text()}
