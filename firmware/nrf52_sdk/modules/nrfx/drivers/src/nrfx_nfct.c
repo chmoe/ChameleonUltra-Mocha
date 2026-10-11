@@ -546,6 +546,15 @@ void nrfx_nfct_enable(void)
     nrf_nfct_int_enable(NRF_NFCT_INT_FIELDLOST_MASK);
 #endif // !defined(NRF52832_XXAA) && !defined(NRF52832_XXAB)
 
+    // A field that woke SYSTEMOFF may already be present before interrupts
+    // are enabled. Do not depend on a fresh FIELDDETECTED edge after boot.
+    NRFX_CRITICAL_SECTION_ENTER();
+    if (nrfx_nfct_field_check())
+    {
+        nrfx_nfct_field_event_handler(NRFX_NFC_FIELD_STATE_ON);
+    }
+    NRFX_CRITICAL_SECTION_EXIT();
+
     NRFX_LOG_INFO("Start");
 }
 
