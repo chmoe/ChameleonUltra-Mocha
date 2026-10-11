@@ -225,6 +225,14 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
+static data_frame_tx_t *cmd_processor_get_rf_diagnostics(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length != 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    uint32_t payload[10];
+    nfc_tag_14a_get_diagnostics(payload);
+    for (uint8_t i = 0; i < 10; i++) payload[i] = U32HTONL(payload[i]);
+    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)payload);
+}
+
 static data_frame_tx_t *cmd_processor_get_polling_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     uint8_t payload = settings_get_polling_enable() ? 1 : 0;
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), &payload);
@@ -3284,6 +3292,7 @@ static data_frame_tx_t *cmd_processor_get_mocha_identity(uint16_t cmd, uint16_t 
 }
 
 static cmd_data_map_t m_data_cmd_map[] = {
+    { DATA_CMD_GET_RF_DIAGNOSTICS, NULL, cmd_processor_get_rf_diagnostics, NULL },
     { DATA_CMD_GET_MOCHA_IDENTITY, NULL, cmd_processor_get_mocha_identity, NULL },
     { DATA_CMD_GET_POLLING_ENABLE, NULL, cmd_processor_get_polling_enable, NULL },
     { DATA_CMD_SET_POLLING_ENABLE, NULL, cmd_processor_set_polling_enable, NULL },

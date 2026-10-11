@@ -28,6 +28,7 @@ NRF_LOG_MODULE_REGISTER();
 #endif
 
 static bool m_polling_rx_paused;
+static volatile uint32_t m_diag_detected, m_diag_lost, m_diag_rx, m_diag_selected;
 
 //Use macro definition data to receive data enable to achieve
 #define NRFX_NFCT_RX_BYTES                                                                                          \
@@ -537,6 +538,7 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
                     // NRF_LOG_INFO("SELECT CLx %02x%02x%02x%02x received\n", p_data[2], p_data[3], p_data[4], p_data[5]);
                     if (cl_finished) {
                         // NRF_LOG_INFO("[MFEMUL_SELECT] m_tag_state_14a = MFEMUL_WORK");
+                        m_diag_selected++;
                         polling_lock_hf_transaction();
                         m_tag_state_14a = NFC_TAG_STATE_14A_ACTIVE;
                         if (!m_sniff_passive) {
@@ -660,6 +662,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
     // Select action to process.
     switch (p_event->evt_id) {
         case NRFX_NFCT_EVT_FIELD_DETECTED: {
+            m_diag_detected++;
             polling_note_hf_field(true);
             sleep_timer_stop();
 
@@ -687,6 +690,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_FIELD_LOST: {
+            m_diag_lost++;
             polling_note_hf_field(false);
             g_is_tag_emulating = false;
             // call sleep_timer_start *after* unsetting g_is_tag_emulating
@@ -724,6 +728,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_RX_FRAMEEND: {
+            m_diag_rx++;
             TAG_FIELD_LED_ON()
 
             // NRF_LOG_INFO("RX FRAMEEND.\n");
@@ -876,5 +881,20 @@ void nfc_tag_14a_polling_resume(void) {
         nfc_fdt_reset();
         NRFX_NFCT_RX_BYTES
     }
+    CRITICAL_REGION_EXIT();
+}
+
+void nfc_tag_14a_get_diagnostics(uint32_t output[10]) {
+    CRITICAL_REGION_ENTER();
+    output[0] = m_diag_detected;
+    output[1] = m_diag_lost;
+    output[2] = m_diag_rx;
+    output[3] = m_diag_selected;
+    output[4] = nrf_nfct_field_status_get();
+    output[5] = NRF_CLOCK->HFCLKSTAT;
+    output[6] = NRF_NFCT->INTENSET;
+    output[7] = m_tag_state_14a;
+    output[8] = m_polling_rx_paused;
+    output[9] = m_nfc_sense_state;
     CRITICAL_REGION_EXIT();
 }

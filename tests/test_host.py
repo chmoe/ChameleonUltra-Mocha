@@ -375,8 +375,8 @@ int main(void) {
     def test_protocol_has_no_collisions_and_preserves_official(self):
         text=(SRC/'data_cmd.h').read_text()
         pairs=re.findall(r'#define (DATA_CMD_\w+)\s+\((\d+)\)',text)
-        extension=[(name,n) for name,n in pairs if 1100 <= int(n) <= 1108]
-        self.assertEqual(len(extension),9)
+        extension=[(name,n) for name,n in pairs if 1100 <= int(n) <= 1109]
+        self.assertEqual(len(extension),10)
         for name,n in extension: self.assertEqual(sum(v==n for _,v in pairs),1)
         d=dict(pairs)
         self.assertEqual(d['DATA_CMD_GET_LONG_PRESS_THRESHOLD'],'1041')
