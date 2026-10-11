@@ -18,6 +18,7 @@ NRF_LOG_MODULE_REGISTER();
 #include "tag_emulation.h"
 #include "polling.h"
 #include "app_util_platform.h"
+#include "rf_clock.h"
 
 
 #if NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
@@ -802,6 +803,7 @@ static enum  {
 void nfc_tag_14a_sense_switch(bool enable) {
     if (m_nfc_sense_state == NFC_SENSE_STATE_NONE || m_nfc_sense_state == NFC_SENSE_STATE_DISABLE) {
         if (enable) {
+            rf_clock_acquire(RF_CLOCK_HF);
             m_nfc_sense_state = NFC_SENSE_STATE_ENABLE;
             // Initialized interrupt event and callback
             nrfx_nfct_config_t nnct = { .rxtx_int_mask = (uint32_t)0xFFFFFFFF, .cb = nfc_tag_14a_event_callback };
@@ -817,6 +819,7 @@ void nfc_tag_14a_sense_switch(bool enable) {
             //Directly anti -initialization NFC peripherals can turn off NFC field induction
             // SDK inside us to call us nrfx_nfct_disable
             nrfx_nfct_uninit();
+            rf_clock_release(RF_CLOCK_HF);
             m_polling_rx_paused = false;
             m_tag_state_14a = NFC_TAG_STATE_14A_IDLE;
             m_is_responded = false;

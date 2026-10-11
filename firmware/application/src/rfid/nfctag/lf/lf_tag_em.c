@@ -6,6 +6,7 @@
 #include "fds_util.h"
 #include "nrf_gpio.h"
 #include "nrf_soc.h"
+#include "rf_clock.h"
 #include "nrfx_lpcomp.h"
 #include "nrfx_pwm.h"
 #include "protocols/em410x.h"
@@ -185,14 +186,8 @@ static void lf_sense_enable(void) {
     // which rules out coherent demodulation or phase-lock-based approaches,
     // but does not preclude the differential-phase encodings supported here.
     //
-    // Paired release in lf_sense_disable(). SD reference-counts HFXO requests,
-    // so this coexists with BLE. Both functions run from thread context
-    // (tag_mode_enter/tag_emulation_sense_end) where SVCs are safe.
-    sd_clock_hfclk_request();
-    uint32_t hfclk_running = 0;
-    while (!hfclk_running) {
-        sd_clock_hfclk_is_running(&hfclk_running);
-    }
+    // Keep the shared HFXO request while either HF or LF emulation needs it.
+    rf_clock_acquire(RF_CLOCK_LF);
 
     lpcomp_init();
     pwm_init();  // use precise hardware pwm to broadcast card id
@@ -209,7 +204,7 @@ static void lf_sense_disable(void) {
     m_lf_reader_present = false;
     m_polling_pause_requested = false;
     m_polling_paused = false;
-    sd_clock_hfclk_release();
+    rf_clock_release(RF_CLOCK_LF);
 }
 
 static enum {

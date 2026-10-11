@@ -306,6 +306,31 @@ int main(void) {
 """
         self.compile_run({'common.h':COMMON},program)
 
+    def test_shared_rf_clock_survives_hf_lf_polling(self):
+        files={'rf_clock.c':(SRC/'utils/rf_clock.c').read_text(),'rf_clock.h':(SRC/'utils/rf_clock.h').read_text()}
+        files['app_error.h']=COMMON+'\n#define APP_ERROR_CHECK(x) assert((x)==0)\n'
+        files['nrf_soc.h']=COMMON+r"""
+static int requests, releases, polls; static bool on;
+static int sd_clock_hfclk_request(void) { requests++; on=true; return 0; }
+static int sd_clock_hfclk_is_running(uint32_t *v) { polls++; *v=on; return 0; }
+static int sd_clock_hfclk_release(void) { releases++; on=false; return 0; }
+"""
+        self.compile_run(files,r"""
+#include "rf_clock.c"
+int main(void) {
+ rf_clock_acquire(RF_CLOCK_HF); rf_clock_acquire(RF_CLOCK_LF);
+ assert(on && requests==1 && polls==1);
+ for(int i=0;i<20;i++) { rf_clock_release(RF_CLOCK_LF); assert(on && releases==0); rf_clock_acquire(RF_CLOCK_LF); }
+ rf_clock_acquire(RF_CLOCK_HF); assert(requests==1);
+ rf_clock_release(RF_CLOCK_HF); assert(on && releases==0);
+ rf_clock_release(RF_CLOCK_LF); assert(!on && releases==1);
+ rf_clock_release(RF_CLOCK_LF); assert(releases==1);
+ rf_clock_acquire(RF_CLOCK_LF); rf_clock_acquire(RF_CLOCK_HF); rf_clock_release(RF_CLOCK_LF);
+ assert(on && requests==2); rf_clock_release(RF_CLOCK_HF); assert(!on && releases==2);
+ return 0;
+}
+""")
+
     def test_rf_idle_rearms_battery_standby(self):
         files={'syssleep.c':(SRC/'utils/syssleep.c').read_text(),
                'syssleep.h':(SRC/'utils/syssleep.h').read_text()}

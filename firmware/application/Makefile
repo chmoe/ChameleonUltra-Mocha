@@ -52,6 +52,7 @@ SRC_FILES += \
   $(PROJ_DIR)/utils/delayed_reset.c \
   $(PROJ_DIR)/utils/fds_util.c \
   $(PROJ_DIR)/utils/syssleep.c \
+  $(PROJ_DIR)/utils/rf_clock.c \
   $(PROJ_DIR)/utils/timeslot.c \
   $(SDK_ROOT)/modules/nrfx/mdk/gcc_startup_nrf52840.S \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_rtt.c \
