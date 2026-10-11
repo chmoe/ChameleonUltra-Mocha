@@ -511,32 +511,11 @@ static void check_wakeup_src(void) {
                (m_gpregret_val & RESET_ON_LF_FIELD_EXISTS_Msk)) {
         NRF_LOG_INFO("WakeUp from rfid field");
 
-        // wake up from hf field.
-        if (m_reset_source & NRF_POWER_RESETREAS_NFC_MASK) {
-            color = 1;  // HF field show G.
-            NRF_LOG_INFO("WakeUp from HF");
-        } else {
-            color = 2;  // LF filed show B.
-            if (m_gpregret_val & RESET_ON_LF_FIELD_EXISTS_Msk) {
-                NRF_LOG_INFO("Reset by LF");
-            } else {
-                NRF_LOG_INFO("WakeUp from LF");
-            }
-        }
-
-        // It is currently the wake-up system of the emulation card event, we can make the strong lights on the field first
-        TAG_FIELD_LED_ON();
-
-        uint8_t animation_config = settings_get_animation_config();
-        if (animation_config == SettingsAnimationModeFull) {
-            // In the case of field wake-up, only one round of RGB is swept as the power-on animation
-            rgb_marquee_sweep_to(color, !dir, dir ? (slot % 8) : 7 - (slot % 8));
-        } else if (animation_config == SettingsAnimationModeSymmetric) {
-            rgb_marquee_symmetric_out(color, slot);
-        } else {
-            set_slot_light_color(color);
-        }
+        // RF wake must enable reception before any blocking LED animation.
+        // Readers may send their first request while the MCU is still booting.
+        tag_mode_enter();
         light_up_by_slot();
+
         polling_start();
 
         // We can only run tag emulation at field wakeup source.

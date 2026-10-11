@@ -129,7 +129,10 @@ int main(void) {
  hf[0]=hf[8]=hf[15]=true; hf_field=true; polling_note_hf_field(true);
  polling_process(); tick(); assert(slot==8); skip[15]=true; tick(); assert(slot==0);
  polling_lock_hf_transaction(); tick(); assert(slot==0);
- hf_field=false; polling_note_hf_field(false); polling_process(); assert(slot==0);
+ hf_field=false; polling_note_hf_field(false); polling_process(); assert(m_hf_locked);
+ now+=50; hf_field=true; polling_note_hf_field(true); tick(); assert(slot==0 && m_hf_locked);
+ hf_field=false; polling_note_hf_field(false); polling_process(); now+=99; polling_process(); assert(m_hf_locked);
+ now+=1; polling_process(); assert(slot==0 && !m_hf_locked);
  hf_field=true; polling_process(); quiesce_ok=false; tick(); assert(slot==0);
  quiesce_ok=true; polling_process(); assert(slot==8);
  polling_forget_session(); slot=15; hf_field=false; polling_process(); assert(slot==15);
@@ -139,10 +142,13 @@ int main(void) {
  hf_field=false; lf_field=true; lf[0]=lf[8]=true; slot=0; polling_process();
  lf_boundary=false; tick(); assert(slot==0 && pause);
  lf_boundary=true; polling_process(); assert(slot==8);
- lf_field=false; polling_process(); assert(slot==0);
+ lf_field=false; polling_process(); assert(slot==8); now+=100; polling_process(); assert(slot==0);
  enabled=false; polling_start(); assert(!polling_is_running() && !pause);
  now=0xfffff0; enabled=true; polling_start(); hf_field=true; polling_note_hf_field(true); polling_note_reader_activity();
- now=0x25; assert(polling_hf_can_switch()); return 0;
+ now=0x25; assert(polling_hf_can_switch());
+ polling_forget_session(); slot=0; hf_field=true; polling_lock_hf_transaction();
+ polling_process(); tick(); assert(slot==0 && m_hf_locked);
+ return 0;
 }''')
 
     def test_slot_migration_preserves_types_and_skip(self):
