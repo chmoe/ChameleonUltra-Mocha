@@ -19,6 +19,7 @@ NRF_LOG_MODULE_REGISTER();
 #include "polling.h"
 #include "app_util_platform.h"
 #include "rf_clock.h"
+#include "app_timer.h"
 
 
 #if NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
@@ -29,6 +30,8 @@ NRF_LOG_MODULE_REGISTER();
 
 static bool m_polling_rx_paused;
 static volatile uint32_t m_diag_detected, m_diag_lost, m_diag_rx, m_diag_selected;
+static bool m_startup_recovery_pending;
+static uint32_t m_startup_recovery_at;
 
 //Use macro definition data to receive data enable to achieve
 #define NRFX_NFCT_RX_BYTES                                                                                          \
@@ -853,6 +856,41 @@ bool nfc_tag_14a_is_reset_enable() {
 bool nfc_tag_14a_field_present(void) {
     // Nordic driver checks presence + lock bits to tolerate field transients.
     return m_nfc_sense_state == NFC_SENSE_STATE_ENABLE && nrfx_nfct_field_check();
+}
+
+void nfc_tag_14a_startup_recovery_schedule(void) {
+    m_startup_recovery_at = app_timer_cnt_get();
+    m_startup_recovery_pending = true;
+}
+
+void nfc_tag_14a_startup_recovery_process(void) {
+    if (!m_startup_recovery_pending) return;
+    // Any received frame means the initial receiver works. Never restart an
+    // ongoing transaction, and never retry this recovery repeatedly.
+    if (m_diag_rx || m_diag_selected) {
+        m_startup_recovery_pending = false;
+        return;
+    }
+    if (app_timer_cnt_diff_compute(app_timer_cnt_get(), m_startup_recovery_at)
+            < APP_TIMER_TICKS(100)) return;
+    if (!nfc_tag_14a_field_present()) {
+        m_startup_recovery_pending = false;
+        return;
+    }
+    bool recover = false;
+    CRITICAL_REGION_ENTER();
+    if (!m_diag_rx && !m_diag_selected &&
+            NRF_NFCT->NFCTAGSTATE == NFCT_NFCTAGSTATE_NFCTAGSTATE_Idle &&
+            !NRF_NFCT->EVENTS_RXFRAMESTART) {
+        recover = nfc_tag_14a_polling_quiesce();
+        if (recover) m_startup_recovery_pending = false;
+    }
+    CRITICAL_REGION_EXIT();
+    if (recover) {
+        // Rebuild only HF reception; card data and active slot stay loaded.
+        nfc_tag_14a_sense_switch(false);
+        nfc_tag_14a_sense_switch(true);
+    }
 }
 
 bool nfc_tag_14a_polling_quiesce(void) {

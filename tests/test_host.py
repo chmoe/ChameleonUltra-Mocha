@@ -306,6 +306,47 @@ int main(void) {
 """
         self.compile_run({'common.h':COMMON},program)
 
+    def test_rf_wake_recovery_is_once_and_skips_active_reception(self):
+        text=(SRC/'rfid/nfctag/hf/nfc_14a.c').read_text()
+        functions=[]
+        for name in ['nfc_tag_14a_startup_recovery_schedule','nfc_tag_14a_startup_recovery_process']:
+            start=text.index('void '+name+'('); first=text.index('{',start); depth=1; end=first+1
+            while depth:
+                depth+=(text[end]=='{')-(text[end]=='}'); end+=1
+            functions.append(text[start:end])
+        program=r"""
+#include "common.h"
+#define CRITICAL_REGION_ENTER()
+#define CRITICAL_REGION_EXIT()
+#define APP_TIMER_TICKS(v) (v)
+#define NFCT_NFCTAGSTATE_NFCTAGSTATE_Idle 3
+static struct { int NFCTAGSTATE, EVENTS_RXFRAMESTART; } hw;
+#define NRF_NFCT (&hw)
+static bool m_startup_recovery_pending, present=true;
+static uint32_t m_startup_recovery_at, now, m_diag_rx, m_diag_selected;
+static int disables,enables;
+static uint32_t app_timer_cnt_get(void) { return now; }
+static uint32_t app_timer_cnt_diff_compute(uint32_t a,uint32_t b) { return a-b; }
+static bool nfc_tag_14a_field_present(void) { return present; }
+static bool nfc_tag_14a_polling_quiesce(void) { return true; }
+static void nfc_tag_14a_sense_switch(bool enable) { if(enable) enables++; else disables++; }
+"""+'\n'.join(functions)+r"""
+int main(void) {
+ hw.NFCTAGSTATE=3; nfc_tag_14a_startup_recovery_schedule();
+ now=99; nfc_tag_14a_startup_recovery_process(); assert(enables==0);
+ now=100; hw.EVENTS_RXFRAMESTART=1; nfc_tag_14a_startup_recovery_process(); assert(enables==0);
+ hw.EVENTS_RXFRAMESTART=0; hw.NFCTAGSTATE=4; nfc_tag_14a_startup_recovery_process(); assert(enables==0);
+ hw.NFCTAGSTATE=3; nfc_tag_14a_startup_recovery_process(); assert(enables==1 && disables==1);
+ now=1000; nfc_tag_14a_startup_recovery_process(); assert(enables==1);
+ nfc_tag_14a_startup_recovery_schedule(); m_diag_rx=1; now+=100;
+ nfc_tag_14a_startup_recovery_process(); assert(!m_startup_recovery_pending && enables==1);
+ m_diag_rx=0; nfc_tag_14a_startup_recovery_schedule(); present=false; now+=100;
+ nfc_tag_14a_startup_recovery_process(); assert(!m_startup_recovery_pending && enables==1);
+ return 0;
+}
+"""
+        self.compile_run({'common.h':COMMON},program)
+
     def test_shared_rf_clock_survives_hf_lf_polling(self):
         files={'rf_clock.c':(SRC/'utils/rf_clock.c').read_text(),'rf_clock.h':(SRC/'utils/rf_clock.h').read_text()}
         files['nrf_drv_clock.h']=COMMON+r"""

@@ -514,6 +514,7 @@ static void check_wakeup_src(void) {
         // RF wake must enable reception before any blocking LED animation.
         // Readers may send their first request while the MCU is still booting.
         tag_mode_enter();
+        nfc_tag_14a_startup_recovery_schedule();
         light_up_by_slot();
 
         polling_start();
@@ -1096,6 +1097,7 @@ int main(void) {
         // Button event process
         button_press_process();
         // Fixed-delay slot polling process
+        nfc_tag_14a_startup_recovery_process();
         if (m_ab_reboot_pending) {
             settings_save_config();
             tag_emulation_save();
