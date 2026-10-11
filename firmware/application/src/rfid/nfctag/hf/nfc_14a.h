@@ -143,3 +143,7 @@ void nfc_tag_14a_set_reset_enable(bool enable);
 bool nfc_tag_14a_is_reset_enable();
 
 #endif
+
+bool nfc_tag_14a_field_present(void);
+
+bool nfc_tag_14a_polling_quiesce(void);

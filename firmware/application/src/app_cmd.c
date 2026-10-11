@@ -14,6 +14,7 @@
 #include "settings.h"
 #include "delayed_reset.h"
 #include "netdata.h"
+#include "polling.h"
 #if defined(PROJECT_CHAMELEON_ULTRA)
 #include "bsp_wdt.h"
 #include "lf_reader_generic.h"
@@ -39,6 +40,7 @@ NRF_LOG_MODULE_REGISTER();
 
 
 static void change_slot_auto(uint8_t slot_new) {
+    polling_forget_session();
     uint8_t slot_now = tag_emulation_get_slot();
     device_mode_t mode = get_device_mode();
     tag_emulation_change_slot(slot_new, mode != DEVICE_MODE_READER);
@@ -144,7 +146,7 @@ static data_frame_tx_t *cmd_processor_reset_settings(uint16_t cmd, uint16_t stat
 
 static data_frame_tx_t *cmd_processor_get_device_settings(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     uint8_t settings[7 + BLE_PAIRING_KEY_LEN] = {};
-    settings[0] = SETTINGS_CURRENT_VERSION; // current version
+    settings[0] = 7; // official wire layout; Mocha FDS schema is independent
     settings[1] = settings_get_animation_config(); // animation mode
     settings[2] = settings_get_button_press_config('A'); // short A button press mode
     settings[3] = settings_get_button_press_config('B'); // short B button press mode
@@ -187,7 +189,7 @@ static data_frame_tx_t *cmd_processor_get_button_press_config(uint16_t cmd, uint
 }
 
 static data_frame_tx_t *cmd_processor_set_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    if ((length != 2) || (!is_settings_button_type_valid(data[0]))) {
+    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonEnterDfuMode) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
     settings_set_button_press_config(data[0], data[1]);
@@ -203,7 +205,7 @@ static data_frame_tx_t *cmd_processor_get_long_button_press_config(uint16_t cmd,
 }
 
 static data_frame_tx_t *cmd_processor_set_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    if ((length != 2) || (!is_settings_button_type_valid(data[0]))) {
+    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonEnterDfuMode) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
     settings_set_long_button_press_config(data[0], data[1]);
@@ -221,6 +223,84 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
     }
     settings_set_sleep_timeout(data[0]);
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
+}
+
+static data_frame_tx_t *cmd_processor_get_polling_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    uint8_t payload = settings_get_polling_enable() ? 1 : 0;
+    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), &payload);
+}
+
+static data_frame_tx_t *cmd_processor_set_polling_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length != 1 || data[0] > 1) {
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    }
+    settings_set_polling_enable(data[0] == 1);
+    uint8_t saved = settings_save_config();
+    if (data[0] == 1) {
+        polling_start();
+    } else {
+        polling_stop();
+    }
+    return data_frame_make(cmd, saved, 0, NULL);
+}
+
+static data_frame_tx_t *cmd_processor_get_polling_interval(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    uint8_t payload[2];
+    uint16_t interval = settings_get_polling_interval_ms();
+    payload[0] = (uint8_t)(interval >> 8);
+    payload[1] = (uint8_t)(interval & 0xFF);
+    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), payload);
+}
+
+static data_frame_tx_t *cmd_processor_set_polling_interval(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length != 2) {
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    }
+    uint16_t interval = ((uint16_t)data[0] << 8) | data[1];
+    if (interval < 100 || interval > 5000) {
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    }
+    settings_set_polling_interval_ms(interval);
+    uint8_t saved = settings_save_config();
+    polling_start();   // restart with new interval
+    return data_frame_make(cmd, saved, 0, NULL);
+}
+
+static data_frame_tx_t *cmd_processor_get_ab_reboot_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    uint8_t payload = settings_get_ab_reboot_enable() ? 1 : 0;
+    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), &payload);
+}
+
+static data_frame_tx_t *cmd_processor_get_slot_polling_skip(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    uint8_t payload[2];
+    uint16_t mask = 0;
+    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
+        if (tag_emulation_slot_polling_skip(slot)) {
+            mask |= (1 << slot);
+        }
+    }
+    payload[0] = (uint8_t)(mask >> 8);
+    payload[1] = (uint8_t)(mask & 0xFF);
+    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), payload);
+}
+
+static data_frame_tx_t *cmd_processor_set_slot_polling_skip(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length != 2) {
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    }
+    uint16_t mask = ((uint16_t)data[0] << 8) | data[1];
+    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
+        tag_emulation_slot_set_polling_skip(slot, ((mask >> slot) & 1) != 0);
+    }
+    return data_frame_make(cmd, tag_emulation_save_config(), 0, NULL);
+}
+
+static data_frame_tx_t *cmd_processor_set_ab_reboot_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length != 1 || data[0] > 1) {
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    }
+    settings_set_ab_reboot_enable(data[0] == 1);
+    return data_frame_make(cmd, settings_save_config(), 0, NULL);
 }
 
 static data_frame_tx_t *cmd_processor_get_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
@@ -1202,10 +1282,10 @@ static data_frame_tx_t *cmd_processor_get_slot_info(uint16_t cmd, uint16_t statu
     struct {
         uint16_t hf_tag_type;
         uint16_t lf_tag_type;
-    } PACKED payload[8];
+    } PACKED payload[TAG_MAX_SLOT_NUM];
 
     tag_slot_specific_type_t tag_types;
-    for (uint8_t slot = 0; slot < 8; slot++) {
+    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
         tag_emulation_get_specific_types_by_slot(slot, &tag_types);
         payload[slot].hf_tag_type = U16HTONS(tag_types.tag_hf);
         payload[slot].lf_tag_type = U16HTONS(tag_types.tag_lf);
@@ -2004,8 +2084,8 @@ static data_frame_tx_t *cmd_processor_get_enabled_slots(uint16_t cmd, uint16_t s
     struct {
         uint8_t enabled_hf;
         uint8_t enabled_lf;
-    } PACKED payload[8];
-    for (uint8_t slot = 0; slot < 8; slot++) {
+    } PACKED payload[TAG_MAX_SLOT_NUM];
+    for (uint8_t slot = 0; slot < TAG_MAX_SLOT_NUM; slot++) {
         payload[slot].enabled_hf = is_slot_enabled(slot, TAG_SENSE_HF);
         payload[slot].enabled_lf = is_slot_enabled(slot, TAG_SENSE_LF);
     }
@@ -3197,7 +3277,23 @@ static data_frame_tx_t *cmd_processor_hf14a_4_debug_counters(uint16_t cmd, uint1
     return data_frame_make(cmd, STATUS_SUCCESS, 4, buf);
 }
 #endif
+static data_frame_tx_t *cmd_processor_get_mocha_identity(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    static const uint8_t identity[] = "Mocha/1;slots=16;base=5c99d4a";
+    if (length != 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(identity) - 1, (uint8_t *)identity);
+}
+
 static cmd_data_map_t m_data_cmd_map[] = {
+    { DATA_CMD_GET_MOCHA_IDENTITY, NULL, cmd_processor_get_mocha_identity, NULL },
+    { DATA_CMD_GET_POLLING_ENABLE, NULL, cmd_processor_get_polling_enable, NULL },
+    { DATA_CMD_SET_POLLING_ENABLE, NULL, cmd_processor_set_polling_enable, NULL },
+    { DATA_CMD_GET_POLLING_INTERVAL, NULL, cmd_processor_get_polling_interval, NULL },
+    { DATA_CMD_SET_POLLING_INTERVAL, NULL, cmd_processor_set_polling_interval, NULL },
+    { DATA_CMD_GET_AB_REBOOT_ENABLE, NULL, cmd_processor_get_ab_reboot_enable, NULL },
+    { DATA_CMD_SET_AB_REBOOT_ENABLE, NULL, cmd_processor_set_ab_reboot_enable, NULL },
+    { DATA_CMD_GET_SLOT_POLLING_SKIP, NULL, cmd_processor_get_slot_polling_skip, NULL },
+    { DATA_CMD_SET_SLOT_POLLING_SKIP, NULL, cmd_processor_set_slot_polling_skip, NULL },
+
     {    DATA_CMD_GET_APP_VERSION,              NULL,                        cmd_processor_get_app_version,               NULL                   },
     {    DATA_CMD_CHANGE_DEVICE_MODE,           NULL,                        cmd_processor_change_device_mode,            NULL                   },
     {    DATA_CMD_GET_DEVICE_MODE,              NULL,                        cmd_processor_get_device_mode,               NULL                   },

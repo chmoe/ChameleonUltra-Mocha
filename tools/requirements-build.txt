@@ -1,0 +1,6 @@
+# Install nrfutil==6.1.7 separately with --no-deps; no BLE DFU driver needed.
+ecdsa==0.19.2
+intelhex==2.3.0
+protobuf==3.20.3
+six==1.17.0
+pyserial==3.5

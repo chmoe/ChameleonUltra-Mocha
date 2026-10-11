@@ -16,6 +16,8 @@ NRF_LOG_MODULE_REGISTER();
 #include "rfid_main.h"
 #include "syssleep.h"
 #include "tag_emulation.h"
+#include "polling.h"
+#include "app_util_platform.h"
 
 
 #if NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
@@ -365,6 +367,8 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
     if (m_sniff_cb != NULL) {
         m_sniff_cb(p_data, szDataBits);
     }
+    // Any frame from the reader means the reader field is present.
+    polling_note_reader_activity();
     // Manually draw frame, separate data and strange school inspection
 #if !NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
     if (szDataBits >= 9) {
@@ -529,6 +533,7 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
                     // NRF_LOG_INFO("SELECT CLx %02x%02x%02x%02x received\n", p_data[2], p_data[3], p_data[4], p_data[5]);
                     if (cl_finished) {
                         // NRF_LOG_INFO("[MFEMUL_SELECT] m_tag_state_14a = MFEMUL_WORK");
+                        polling_lock_hf_transaction();
                         m_tag_state_14a = NFC_TAG_STATE_14A_ACTIVE;
                         if (!m_sniff_passive) {
                             nfc_tag_14a_tx_bytes(auto_coll_res->sak, 1, true);
@@ -651,12 +656,14 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
     // Select action to process.
     switch (p_event->evt_id) {
         case NRFX_NFCT_EVT_FIELD_DETECTED: {
+            polling_note_hf_field(true);
             sleep_timer_stop();
 
             g_is_tag_emulating = true;
             g_usb_led_marquee_enable = false;
 
-            set_slot_light_color(RGB_GREEN);
+            // Keep the slot display color (mixed for high-half slots) during
+            // the read; TAG_FIELD_LED indicates the field activity.
             TAG_FIELD_LED_ON()
 
             NRF_LOG_INFO("HF FIELD DETECTED");
@@ -676,6 +683,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_FIELD_LOST: {
+            polling_note_hf_field(false);
             g_is_tag_emulating = false;
             // call sleep_timer_start *after* unsetting g_is_tag_emulating
             sleep_timer_start(SLEEP_DELAY_MS_FIELD_NFC_LOST);
@@ -712,7 +720,6 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_RX_FRAMEEND: {
-            set_slot_light_color(RGB_GREEN);
             TAG_FIELD_LED_ON()
 
             // NRF_LOG_INFO("RX FRAMEEND.\n");
@@ -761,6 +768,8 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
  * @param state New state
  */
 void nfc_tag_14a_set_state(nfc_tag_14a_state_t state) {
+    if (state == NFC_TAG_STATE_14A_ACTIVE || state == NFC_TAG_STATE_14A_PROPRIETARY)
+        polling_lock_hf_transaction();
     m_tag_state_14a = state;
 }
 
@@ -821,4 +830,20 @@ void nfc_tag_14a_set_reset_enable(bool enable) {
 
 bool nfc_tag_14a_is_reset_enable() {
     return reset_if_field_lost;
+}
+
+bool nfc_tag_14a_field_present(void) {
+    // Nordic driver checks presence + lock bits to tolerate field transients.
+    return m_nfc_sense_state == NFC_SENSE_STATE_ENABLE && nrfx_nfct_field_check();
+}
+
+bool nfc_tag_14a_polling_quiesce(void) {
+    bool allowed;
+    // Close the check/disable race against RX/SELECT interrupts. No flash or
+    // animation work occurs in this short critical region.
+    CRITICAL_REGION_ENTER();
+    allowed = polling_hf_can_switch();
+    if (allowed) nfc_tag_14a_sense_switch(false);
+    CRITICAL_REGION_EXIT();
+    return allowed;
 }

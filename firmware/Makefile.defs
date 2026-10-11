@@ -26,8 +26,8 @@ CHAMELEON_LITE  := lite
 CURRENT_DEVICE_TYPE ?= ${CHAMELEON_ULTRA}
 
 # Versioning information
-GIT_VERSION := $(shell git describe --abbrev=7 --dirty --always --tags --match "v*.*")
-APP_FW_SEMVER := $(subst v,,$(shell git describe --tags --abbrev=0 --match "v*.*"))
+GIT_VERSION := Mocha-1.0.0-$(shell git rev-parse --short=7 HEAD)
+APP_FW_SEMVER := $(subst v,,$(shell git describe --tags --abbrev=0 --match "v*.*" 2>/dev/null || echo v2.2.0))
 APP_FW_VER_MAJOR := $(word 1,$(subst ., ,$(APP_FW_SEMVER)))
 APP_FW_VER_MINOR := $(word 2,$(subst ., ,$(APP_FW_SEMVER)))
 

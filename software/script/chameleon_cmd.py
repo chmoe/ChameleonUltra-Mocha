@@ -1407,7 +1407,7 @@ class ChameleonCMD:
         i = 0
         slot_index = 0
 
-        while i < len(resp.data) and slot_index < 8:
+        while i < len(resp.data) and slot_index < len(SlotNumber):
             slot_names = {'hf': '', 'lf': ''}
 
             if i < len(resp.data):

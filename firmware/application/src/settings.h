@@ -5,7 +5,7 @@
 
 #include "utils.h"
 
-#define SETTINGS_CURRENT_VERSION 7
+#define SETTINGS_CURRENT_VERSION 0x4D01
 #define SETTINGS_SLEEP_TIMEOUT_DEFAULT_S 8   // default wake timeout in seconds (matches SLEEP_DELAY_MS_BUTTON_WAKEUP)
 #define SETTINGS_SLEEP_TIMEOUT_MIN_S      5
 #define SETTINGS_SLEEP_TIMEOUT_MAX_S      60
@@ -35,6 +35,10 @@ typedef enum {
     SettingsButtonShowBattery = 4U,
     // Toggle NFC field generator on/off (Ultra only, must be in reader mode)
     SettingsButtonNfcFieldGenerator = 5U,
+    // Toggle auto slot polling on/off
+    SettingsButtonTogglePolling = 6U,
+    // Restart into the bootloader (DFU mode)
+    SettingsButtonEnterDfuMode = 7U,
 } settings_button_function_t;
 
 typedef struct ALIGN_U32 {
@@ -43,7 +47,9 @@ typedef struct ALIGN_U32 {
     // 1 byte
     uint8_t animation_config : 2;
     uint8_t ble_pairing_enable : 1;
-    uint8_t reserved0 : 5; // If you are add switch field, reallocating me.
+    uint8_t polling_enable : 1;   // Mazha bit position preserved by Mocha
+    uint8_t ab_reboot_enable : 1; // Mazha bit position preserved by Mocha
+    uint8_t reserved0 : 3;
 
     // 1 byte
     uint8_t button_a_press : 4;
@@ -60,7 +66,8 @@ typedef struct ALIGN_U32 {
     uint8_t sleep_timeout; // wake timeout in seconds after button wakeup
 
     // 2 bytes (add on version7)
-    uint16_t long_press_threshold; // long button press threshold in ms
+    uint16_t long_press_threshold; // official v7 field, never reused
+    uint16_t polling_interval_ms; // Mocha schema 0x4D01
 
     /*
      * Warning !!!!!!!!!!!!!!!!!!!!!! <-------------
@@ -69,6 +76,7 @@ typedef struct ALIGN_U32 {
      * and fully use the space of this structure before considering reallocating memory space.
      */
 } settings_data_t;
+_Static_assert(sizeof(settings_data_t) == 16, "Mocha settings layout");
 
 void settings_init_config(void);
 void settings_migrate(void);
@@ -92,4 +100,10 @@ void settings_init_sleep_timeout_config(void);
 uint16_t settings_get_long_press_threshold(void);
 void settings_set_long_press_threshold(uint16_t duration);
 void settings_init_long_press_threshold_config(void);
+bool settings_get_polling_enable(void);
+void settings_set_polling_enable(bool enable);
+uint16_t settings_get_polling_interval_ms(void);
+void settings_set_polling_interval_ms(uint16_t ms);
+bool settings_get_ab_reboot_enable(void);
+void settings_set_ab_reboot_enable(bool enable);
 #endif

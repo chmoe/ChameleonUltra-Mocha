@@ -60,7 +60,7 @@ static uint16_t m_tag_data_hf_crc;
 static tag_data_buffer_t m_tag_data_hf = {sizeof(m_tag_data_buffer_hf), m_tag_data_buffer_hf, &m_tag_data_hf_crc};
 
 /**
- * Eight card slots, each card slot has its own unique configuration
+ * Sixteen card slots, each card slot has its own unique configuration
  */
 static tag_slot_config_t slotConfig ALIGN_U32 = {
     // Configure activated card slot, default activation of the 0th card slot (the first card)
@@ -77,6 +77,8 @@ static tag_slot_config_t slotConfig ALIGN_U32 = {
         { .enabled_hf = false, .enabled_lf = false, .tag_hf = TAG_TYPE_UNDEFINED,   .tag_lf = TAG_TYPE_UNDEFINED, },  // 6
         { .enabled_hf = false, .enabled_lf = false, .tag_hf = TAG_TYPE_UNDEFINED,   .tag_lf = TAG_TYPE_UNDEFINED, },  // 7
         { .enabled_hf = false, .enabled_lf = false, .tag_hf = TAG_TYPE_UNDEFINED,   .tag_lf = TAG_TYPE_UNDEFINED, },  // 8
+        // Slots 9..16 are not initialized explicitly: C static initialization leaves
+        // them zeroed (disabled + TAG_TYPE_UNDEFINED), matching the v8 -> v9 migration.
     },
 };
 // The card slot configuration unique CRC, once the slot configuration changes, can be checked by CRC
@@ -121,7 +123,6 @@ static tag_base_handler_map_t tag_base_map[] = {
 };
 
 static void tag_emulation_load_config(void);
-static void tag_emulation_save_config(void);
 
 /**
  * get the data loader for the specific type of tag
@@ -446,9 +447,11 @@ static void tag_emulation_migrate_slot_config_v0_to_v8(void) {
     NRF_LOG_INFO("Migrating slotConfig v0...");
     NRF_LOG_HEXDUMP_INFO(tmpbuf, sizeof(tmpbuf));
     // Populate new slotConfig struct
-    slotConfig.version = TAG_SLOT_CONFIG_CURRENT_VERSION;
+    slotConfig.version = 8;
     slotConfig.active_slot = tmpbuf[0];
-    for (uint8_t i = 0; i < ARRAYLEN(slotConfig.slots); i++) {
+    // Old config only has 8 slots; do not iterate the whole 16-slot array here,
+    // tmpbuf bytes beyond the old record length are uninitialized garbage.
+    for (uint8_t i = 0; i < 8; i++) {
         bool enabled = tmpbuf[4 + (i * 4)] & 1;
 
         slotConfig.slots[i].tag_hf = tmpbuf[4 + (i * 4) + 2];
@@ -489,7 +492,18 @@ static void tag_emulation_migrate_slot_config(void) {
              * through to the next case.
              */
 
+        case 8:
+            // v8 -> v9: expand to 16 slots, clear the new slots.
+            // NOTE: if the slot count is expanded again in the future, adjust the 8 here.
+            memset(&slotConfig.slots[8], 0, 8 * sizeof(slotConfig.slots[0]));
+            NRF_LOG_INFO("Migrating slotConfig v8 to v9...");
+            for (uint8_t i = 0; i < 8; i++) slotConfig.slots[i].polling_skip = false;
+            slotConfig.version = 9;
+            // fall through: v9 already includes the skip bit in Mazha
+        case 9:
+            slotConfig.version = TAG_SLOT_CONFIG_CURRENT_VERSION;
             tag_emulation_save_config();
+            break;
         case TAG_SLOT_CONFIG_CURRENT_VERSION:
             break;
         default:
@@ -520,7 +534,7 @@ static void tag_emulation_load_config(void) {
 /**
  * Save the emulated card configuration data
  */
-static void tag_emulation_save_config(void) {
+uint8_t tag_emulation_save_config(void) {
     // We are configured the card slot configuration, and we need to calculate the current card slot configuration CRC code to judge whether the data below is updated
     uint16_t new_calc_crc;
     calc_14a_crc_lut((uint8_t *)&slotConfig, sizeof(slotConfig), (uint8_t *)&new_calc_crc);
@@ -532,10 +546,12 @@ static void tag_emulation_save_config(void) {
             m_slot_config_crc = new_calc_crc;
         } else {
             NRF_LOG_ERROR("Save tag slot config error.");
+            return STATUS_FLASH_WRITE_FAIL;
         }
     } else {
         NRF_LOG_INFO("Tag slot config no change.");
     }
+    return STATUS_SUCCESS;
 }
 
 /**
@@ -606,6 +622,19 @@ void tag_emulation_change_slot(uint8_t index, bool sense_disable) {
 /**
  * Determine whether the specified card slot is enabled
  */
+bool tag_emulation_slot_polling_skip(uint8_t slot) {
+    if (slot >= TAG_MAX_SLOT_NUM) {
+        return true;
+    }
+    return slotConfig.slots[slot].polling_skip;
+}
+
+void tag_emulation_slot_set_polling_skip(uint8_t slot, bool skip) {
+    if (slot < TAG_MAX_SLOT_NUM) {
+        slotConfig.slots[slot].polling_skip = skip;
+    }
+}
+
 bool is_slot_enabled(uint8_t slot, tag_sense_type_t sense_type) {
     if (sense_type == TAG_SENSE_LF) {
         return slotConfig.slots[slot].enabled_lf;

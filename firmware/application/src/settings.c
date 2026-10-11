@@ -63,6 +63,12 @@ void settings_init_long_press_threshold_config(void) {
     config.long_press_threshold = SETTINGS_LONG_PRESS_THRESHOLD_DEFAULT_MS;
 }
 
+static void settings_init_polling_config(void) {
+    config.polling_enable = false;
+    config.polling_interval_ms = 500;
+    config.ab_reboot_enable = true;
+}
+
 void settings_init_config(void) {
     settings_update_version_for_config();
     config.animation_config = SettingsAnimationModeFull; // add on version1
@@ -72,6 +78,7 @@ void settings_init_config(void) {
     settings_init_ble_pairing_enable_config();
     settings_init_sleep_timeout_config();
     settings_init_long_press_threshold_config();
+    settings_init_polling_config();
 }
 
 void settings_migrate(void) {
@@ -98,6 +105,9 @@ void settings_migrate(void) {
         case 6:
             settings_init_long_press_threshold_config();
 
+        case 7:
+            settings_init_polling_config();
+
             /*
              * Add new migration steps ABOVE THIS COMMENT
              * `settings_update_version_for_config()` and `break` statements should only be used on the last migration step, all the previous steps must fall
@@ -113,17 +123,31 @@ void settings_migrate(void) {
 }
 
 void settings_load_config(void) {
+    // Initialize the tail before reading a shorter legacy record.
+    settings_init_config();
     uint16_t length = sizeof(config);
     bool ret = fds_read_sync(FDS_SETTINGS_FILE_ID, FDS_SETTINGS_RECORD_KEY, &length, (uint8_t *)&config);
     if (ret) {
+        update_config_crc();
+        // Mazha v8 is unique. Both forks used v7/16 bytes with incompatible
+        // meanings, and slot-v9 is not proof after an official reflash.
+        // For ambiguous v7 preserve the official threshold and default polling
+        // off. A Mazha v7 user must explicitly configure the new interval.
+        bool mazha = config.version == 8;
+        if (mazha && length == 16) {
+            config.polling_interval_ms = config.long_press_threshold;
+            settings_init_long_press_threshold_config();
+            config.version = SETTINGS_CURRENT_VERSION;
+        }
+        if (config.polling_interval_ms < 100 || config.polling_interval_ms > 5000)
+            config.polling_interval_ms = 500;
         NRF_LOG_INFO("Load config done.");
         // After the reading is complete, we first save a copy of the current CRC, which can be used as a reference for comparison of changes when saving later
-        update_config_crc();
     } else {
         NRF_LOG_WARNING("Config does not exist, loading default values...");
         settings_init_config();
     }
-    if (config.version > SETTINGS_CURRENT_VERSION) {
+    if (config.version != SETTINGS_CURRENT_VERSION && config.version > 7) {
         NRF_LOG_WARNING("Config version %d is greater than current firmware supports (%d). Default config will be loaded.", config.version, SETTINGS_CURRENT_VERSION);
         settings_init_config();
     }
@@ -328,3 +352,12 @@ void settings_set_long_press_threshold(uint16_t duration) {
     }
     config.long_press_threshold = duration;
 }
+
+bool settings_get_polling_enable(void) { return config.polling_enable; }
+void settings_set_polling_enable(bool enable) { config.polling_enable = enable; }
+uint16_t settings_get_polling_interval_ms(void) { return config.polling_interval_ms; }
+void settings_set_polling_interval_ms(uint16_t ms) {
+    if (ms >= 100 && ms <= 5000) config.polling_interval_ms = ms;
+}
+bool settings_get_ab_reboot_enable(void) { return config.ab_reboot_enable; }
+void settings_set_ab_reboot_enable(bool enable) { config.ab_reboot_enable = enable; }

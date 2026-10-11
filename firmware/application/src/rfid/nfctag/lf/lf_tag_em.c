@@ -39,7 +39,18 @@ static tag_specific_type_t m_tag_type = TAG_TYPE_UNDEFINED;
 const nrfx_pwm_t m_broadcast = NRFX_PWM_INSTANCE(0);
 const nrf_pwm_sequence_t *m_pwm_seq = NULL;
 
+// True while the LF emulation detects a real reader field (set in the
+// EVT_STOPPED check with antenna off + drain, cleared on field lost).
+// This is the reliable "reader present" signal for polling: sampling LPCOMP
+// directly from polling would false-positive on the device's own broadcast.
+static volatile bool m_lf_reader_present = false;
+static volatile bool m_polling_pause_requested;
+static volatile bool m_polling_paused;
+
 static void lf_field_lost(void) {
+    m_lf_reader_present = false;
+    m_polling_pause_requested = false;
+    m_polling_paused = false;
     // Open the incident interruption, so that the next event can be in and out normally
     g_is_tag_emulating = false;  // Reset the flag in the emulation
     m_is_lf_emulating = false;
@@ -82,13 +93,15 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event) {
     nrfx_lpcomp_disable();
 
     // set the emulation status logo bit
+    m_lf_reader_present = true;
+    m_polling_pause_requested = false;
+    m_polling_paused = false;
     m_is_lf_emulating = true;
     g_is_tag_emulating = true;
     // turn off USB light effect when emulating cards
     g_usb_led_marquee_enable = false;
 
     // LED status update
-    set_slot_light_color(RGB_BLUE);
     TAG_FIELD_LED_ON()
 
     // Play a finite burst then stop — field check happens in EVT_STOPPED after
@@ -121,11 +134,20 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
     bsp_delay_ms(2);  // let peak detector drain: ~2 ms time constant on LF_RSSI
     if (is_lf_field_exists()) {
         // Field still present — play another finite burst then check again.
+        m_lf_reader_present = true;
+        if (m_polling_pause_requested) {
+            m_polling_paused = true;
+            return;
+        }
         nrfx_pwm_simple_playback(&m_broadcast, m_pwm_seq, 10, NRFX_PWM_FLAG_STOP);
     } else {
         // Field gone — clean up.
         lf_field_lost();
     }
+}
+
+bool lf_reader_field_present(void) {
+    return m_lf_reader_present;
 }
 
 static void pwm_init(void) {
@@ -184,6 +206,9 @@ static void lf_sense_disable(void) {
     nrfx_lpcomp_uninit();
     m_pwm_seq = NULL;
     m_is_lf_emulating = false;
+    m_lf_reader_present = false;
+    m_polling_pause_requested = false;
+    m_polling_paused = false;
     sd_clock_hfclk_release();
 }
 
@@ -444,4 +469,17 @@ bool lf_tag_idteck_data_factory(uint8_t slot, tag_specific_type_t tag_type) {
         0xDE, 0xAD, 0xBE, 0xEF,   // default card data
     };
     return lf_tag_data_factory(slot, tag_type, tag_id, sizeof(tag_id));
+}
+
+bool lf_polling_pause_at_boundary(void) {
+    m_polling_pause_requested = true;
+    return m_polling_paused;
+}
+void lf_polling_resume(void) {
+    m_polling_pause_requested = false;
+    if (m_polling_paused) {
+        m_polling_paused = false;
+        if (m_is_lf_emulating && m_pwm_seq != NULL)
+            nrfx_pwm_simple_playback(&m_broadcast, m_pwm_seq, 10, NRFX_PWM_FLAG_STOP);
+    }
 }

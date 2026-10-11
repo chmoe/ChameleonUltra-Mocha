@@ -34,3 +34,5 @@ device_mode_t get_device_mode(void);
 uint8_t get_color_by_slot(uint8_t slot);
 
 #endif
+
+uint8_t get_slot_display_color(uint8_t slot);

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "rfid_main.h"
 #include "rgb_marquee.h"
+#include "hw_connect.h"
 
 //The current mode of the device
 device_mode_t rfid_state = DEVICE_MODE_NONE;
@@ -69,32 +70,66 @@ void tag_mode_enter(void) {
 
         // to run tag emulation
         tag_emulation_sense_run();
+
+        // Restore the slot LED display (position + high-half mixed color).
+        // Operations like offline copy leave their own LED colors behind.
+        light_up_by_slot();
     }
+}
+
+/**
+ * @brief Map a slot to its display color. Slots 9-16 use mixed colors so the
+ *        high half is distinguishable without blinking. Returns a
+ *        chameleon_rgb_type_t value usable by the marquee animation.
+ */
+uint8_t get_slot_display_color(uint8_t slot) {
+    uint8_t base = get_color_by_slot(slot);
+    if (slot >= 8) {
+        switch (base) {
+            case 0: return RGB_YELLOW;   // dual -> yellow
+            case 1: return RGB_CYAN;     // IC    -> cyan
+            default: return RGB_MAGENTA; // ID    -> magenta
+        }
+    }
+    return base;
+}
+
+/**
+ * @brief Set the LED color for a slot (mixed color for the high half).
+ */
+static void set_slot_led_color_by_slot(uint8_t slot) {
+    set_slot_light_color((chameleon_rgb_type_t)get_slot_display_color(slot));
 }
 
 /**
  * @brief Function for light up led by slot index
  */
 void light_up_by_slot(void) {
+    rgb_marquee_stop();
     uint32_t *led_pins = hw_get_led_array();
     // The current lighting logic has not changed very much, so we only need to light up the specified lamp for the time being.
     uint8_t slot = tag_emulation_get_slot();
+    uint8_t led_index = slot % 8;   // 16 slots map onto 8 LEDs
     for (int i = 0; i < RGB_LIST_NUM; i++) {
-        if (i == slot) {
+        if (i == led_index) {
             nrf_gpio_pin_set(led_pins[i]);
         } else {
             nrf_gpio_pin_clear(led_pins[i]);
         }
     }
+    set_slot_led_color_by_slot(slot);
 }
 
 /**
  * @brief Apply visual and state changes after switching slot
  */
 void apply_slot_change(uint8_t slot_now, uint8_t slot_new) {
-    uint8_t color_now = get_color_by_slot(slot_now);
-    uint8_t color_new = get_color_by_slot(slot_new);
-    rgb_marquee_slot_switch(slot_now, color_now, slot_new, color_new);
+    // Foreground slot feedback owns PWM until complete. USB resumes at step 0.
+    rgb_marquee_stop();
+    rgb_marquee_slot_switch(slot_now, get_slot_display_color(slot_now),
+                            slot_new, get_slot_display_color(slot_new));
+    rgb_marquee_stop();
+    light_up_by_slot();
 }
 
 /**

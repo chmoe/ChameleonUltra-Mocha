@@ -269,6 +269,14 @@ class SlotNumber(enum.IntEnum):
     SLOT_6 = 6
     SLOT_7 = 7
     SLOT_8 = 8
+    SLOT_9 = 9
+    SLOT_10 = 10
+    SLOT_11 = 11
+    SLOT_12 = 12
+    SLOT_13 = 13
+    SLOT_14 = 14
+    SLOT_15 = 15
+    SLOT_16 = 16
 
     @staticmethod
     def to_fw(index: int):  # can be int or SlotNumber
