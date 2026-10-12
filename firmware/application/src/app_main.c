@@ -73,6 +73,18 @@ volatile bool m_is_field_on = false;
 
 // cpu reset reason
 static uint32_t m_reset_source;
+static uint32_t m_boot_profile[8];
+static uint32_t m_boot_cycle_start, m_boot_dwt_ctrl, m_boot_demcr;
+
+static void boot_profile_mark(uint8_t stage) {
+    // Active CPU time at 64MHz; excludes bootloader and time with CPU halted.
+    m_boot_profile[stage] = (DWT->CYCCNT - m_boot_cycle_start) / 64000u;
+}
+
+void app_get_startup_diagnostics(uint32_t output[9]) {
+    memcpy(output, m_boot_profile, sizeof(m_boot_profile));
+    output[8] = m_reset_source;
+}
 static uint32_t m_gpregret_val;
 
 #define GPREGRET_CLEAR_VALUE_DEFAULT (0xFFFFFFFFUL)
@@ -1055,25 +1067,38 @@ static void ble_passkey_init(void) {
 /**@brief Application main function.
  */
 int main(void) {
+    m_boot_demcr = CoreDebug->DEMCR;
+    m_boot_dwt_ctrl = DWT->CTRL;
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    m_boot_cycle_start = DWT->CYCCNT;
     hw_connect_init();        // Remember to initialize the pins first
 
     fds_util_init();          // Initialize fds tool
     settings_load_config();   // Load settings from flash
+    boot_profile_mark(0);
 
     init_leds();              // LED initialization
+    // Show the field wake before BLE, random seeding, and RF clock waits.
+    if (NRF_POWER->RESETREAS & (NRF_POWER_RESETREAS_NFC_MASK | NRF_POWER_RESETREAS_LPCOMP_MASK)) {
+        TAG_FIELD_LED_ON();
+    }
     log_init();               // Log initialization
     gpio_te_init();           // Initialize GPIO matrix library
     app_timers_init();        // Initialize soft timer
     power_management_init();  // Power management initialization
     usb_cdc_init();           // USB cdc emulation initialization
     ble_slave_init();         // Bluetooth protocol stack initialization
+    boot_profile_mark(1);
 
     rng_drv_and_srand_init(); // Random number generator initialization
+    boot_profile_mark(2);
     bsp_timer_init();         // Initialize timeout timer
     bsp_timer_start();        // Start BSP TIMER and prepare it for processing business logic
     button_init();            // Button initialization for handling business logic
     sleep_timer_init();       // Soft timer initialization for hibernation
     tag_emulation_init();     // Analog card initialization
+    boot_profile_mark(3);
     polling_init();           // Fixed-delay slot polling timer
     rgb_marquee_init();       // Light effect initialization
 
@@ -1082,11 +1107,17 @@ int main(void) {
     // cmd callback register
     on_data_frame_complete(on_data_frame_received);
 
+    boot_profile_mark(4);
     check_wakeup_src();       // Detect wake-up source and decide BLE broadcast and subsequent hibernation action according to the wake-up source
+    boot_profile_mark(5);
     tag_mode_enter();         // Enter card emulation mode by default
+    boot_profile_mark(6);
 
     // usbd event listener
     APP_ERROR_CHECK(app_usbd_power_events_enable());
+    boot_profile_mark(7);
+    DWT->CTRL = m_boot_dwt_ctrl;
+    CoreDebug->DEMCR = m_boot_demcr;
 
     bsp_wdt_init();
     // Enter main loop.
