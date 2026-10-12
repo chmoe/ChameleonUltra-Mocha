@@ -1,12 +1,12 @@
 diff --git a/README_MOCHA.md b/README_MOCHA.md
 new file mode 100644
-index 0000000..e048c60
+index 0000000..c34ad3f
 --- /dev/null
 +++ b/README_MOCHA.md
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,108 @@
 +# Mocha 1.0.0 — Chameleon Ultra
 +
-+这是可构建的官方最新固件移植版本，保留官方 Ultralight C / 3DES、SEOS 和新 LF 协议源码。只为 **Ultra** 构建；未刷入设备、未访问串口、未写卡数据、未发布或推送。
++这是可构建的官方最新固件移植版本，保留官方 Ultralight C / 3DES、SEOS 和新 LF 协议源码。只为 **Ultra** 构建；本次构建未刷入设备、未访问串口、未写卡数据。
 +
 +## 固定来源与许可证
 +
@@ -15,7 +15,7 @@ index 0000000..e048c60
 +- Mazha 参考：`1f44d9a4c66258f2ef16cb90b5262a9d30b0ad98`，通过其 main 的 ls-remote 核对。
 +- [Mazha 来源](https://github.com/Mazha0309/ChameleonUltra-mazha0309)，自定义改动起点 `1c9e8e8`，017 发布包提交 `6268247`。
 +- 分支 `codex/mocha`。保留原 AUTHORS、GPLv3 LICENSE、Nordic SDK 和第三方许可证。Mocha 改动及控制工具按 GPLv3 提供；SDK 等仍遵守各自许可证。
-+- `dist/build-info.json` 记录最终源码提交、工具版本和产物校验和。`dist/mocha-source.tar.gz` 为对应源码，`dist/mocha-from-official.patch` 为相对固定官方基线的补丁。
++- `releases/mocha-1.0.0/build-info.json` 记录最终源码提交、工具版本和产物校验和。`releases/mocha-1.0.0/mocha-source.tar.gz` 为对应源码，`releases/mocha-1.0.0/mocha-from-official.patch` 为相对固定官方基线的补丁。
 +
 +## 功能和实际行为
 +
@@ -47,14 +47,14 @@ index 0000000..e048c60
 +Python + `pyserial==3.5`。先关闭官方 GUI 和其他串口客户端。工具需要显式指定端口，在每次连接后先读取命令 1100 严格匹配 Mocha v1 身份，失败时拒绝任何写操作。macOS 使用 TIOCEXCL 防止后续串口争用。以下是用法示例，本次未执行设备操作：
 +
 +```sh
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 status
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 interval 500
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 skip 0x8001  # 跳过槽1、16
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 polling on
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 button a long polling
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 button b long dfu
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 ab-reboot off
-+python tools/mocha.py --port /dev/cu.usbmodemEF1A1E2D3CC91 select 16
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE status
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE interval 500
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE skip 0x8001  # 跳过槽1、16
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE polling on
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE button a long polling
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE button b long dfu
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE ab-reboot off
++python tools/mocha.py --port /dev/cu.usbmodemYOUR_DEVICE select 16
 +```
 +
 +| 编号 | Mocha 操作 | 数据 |
@@ -84,6 +84,34 @@ index 0000000..e048c60
 +测试编译实际设置与轮询源码，对官方/Mazha 迁移、持久化错误、间隔边界、无场、skip、16 槽跨半区、HF quiet/事务锁、LF burst 边界、手动取消、读卡模式、计时器回绕进行模拟；USB 测试编译实际动画函数核对 80/100ms 与 PWM 重置后的颜色、方向、步序；CLI 测试验证身份不符时只发送读身份命令。DFU 验证检查 manifest、镜像哈希、签名、硬件和 SD 条件及 Mocha 标识。
 +
 +**验证边界**：已编译并做主机模拟；尚未进行新固件的实机 DFU、USB/BLE 灯光、持续场、HF/LF 门禁、认证/写卡事务和断电恢复测试。主机模拟不等于硬件验证。授权刷机后应先复核现有备份，再逐项现场验证；本次没有刷机授权。
++
++## 灯效修复
++
++USB 空闲充电呼吸灯只使用中间四灯，连续 PWM 输出期间只修改亮度；全暗后再切换颜色。移除每个亮度步进重启 PWM 及与卡槽动画共用的回调标志，接管时清除旧 GPIO 灯位。主机回归覆盖完整呼吸周期、暗态换色及 USB 扫描动画接管。
++
++## USB 灯效切换
++
++串口开关状态持续稳定 1 秒后才切换呼吸/通信灯效，防止 GUI 短暂设备探测打断呼吸动画。USB 收发不延迟。修复以短探测造成模式抖动为目标，仍需在 GUI 开启时实机观察确认。
++
++版本号固定为 1.0.0；同版本修复使用固件字符串末尾的 Git 提交编号区分构建。
++
++## RF 切槽和待机修复（版本仍为 1.0.0）
++
++NFCT 重新初始化/关闭时清除场状态、过滤及激活校验状态，卡协议状态回到 IDLE。主循环检测稳定离场 100ms 后清除模拟标志并重新启动 3 秒待机计时，仍遵守 USB/蓝牙/读卡场发生器阻止深睡的规则。
++
++### RF 唤醒与短暂断场
++
++RF 唤醒路径先开启卡片响应，不播放阻塞式开机灯效；按键唤醒灯效保持原设置。轮询保持原有场消失后恢复原槽的行为。读卡器真正间歇开关场、或尚未 SELECT 时的正常 200ms 轮询，仍会显示实际活动槽位。
++
++高频轮询切槽不再关闭/重建 NFCT：在未 SELECT 且读卡请求安静时暂停 RX/TX 中断，保留场和时钟状态，切换数据后重置协议状态并恢复接收；低频模块单独重新配置。手动切槽和离场恢复仍沿用原流程。
++
++NFCT 启用时主动检查已有场，并通过驱动的正常 FIELD_DETECTED 路径启动激活校验和接收，覆盖场唤醒时缺少新场边沿的情况。
++
++HF/LF 模拟共同持有 HFXO 请求，只有两个模块都关闭后才释放；避免 HF 轮询关闭 LF 模块时停止高频晶振。
++
++只读诊断命令 1109 返回十二个网络序 uint32：场到来/离开、接收帧、SELECT 次数、FIELDSTATUS、HFCLKSTAT、中断掩码、协议状态、轮询暂停状态、感应状态、NFCTAGSTATE、RXD.AMOUNT。用于核对实际场、时钟与接收状态，不修改卡片。
++
++只读命令 1110 返回九个网络序 uint32：设置加载后、BLE 初始化后、随机种子后、卡片加载后、唤醒处理前/后、进入模拟后、USB 电源事件开启后的累计 CPU 活动毫秒，以及复位原因。计时从应用入口开始，不包含引导程序及 CPU 停止时段，不能当作完整墙钟唤醒时间。
 diff --git a/firmware/Makefile.defs b/firmware/Makefile.defs
 index e406962..424ec27 100644
 --- a/firmware/Makefile.defs
@@ -100,7 +128,7 @@ index e406962..424ec27 100644
  APP_FW_VER_MINOR := $(word 2,$(subst ., ,$(APP_FW_SEMVER)))
  
 diff --git a/firmware/application/Makefile b/firmware/application/Makefile
-index 023f164..370a6e4 100644
+index 023f164..cc62ec8 100644
 --- a/firmware/application/Makefile
 +++ b/firmware/application/Makefile
 @@ -25,6 +25,7 @@ SRC_FILES += \
@@ -111,8 +139,16 @@ index 023f164..370a6e4 100644
    $(PROJ_DIR)/rfid/nfctag/tag_emulation.c \
    $(PROJ_DIR)/rfid/nfctag/tag_persistence.c \
    $(PROJ_DIR)/rfid/nfctag/hf/crypto1_helper.c \
+@@ -51,6 +52,7 @@ SRC_FILES += \
+   $(PROJ_DIR)/utils/delayed_reset.c \
+   $(PROJ_DIR)/utils/fds_util.c \
+   $(PROJ_DIR)/utils/syssleep.c \
++  $(PROJ_DIR)/utils/rf_clock.c \
+   $(PROJ_DIR)/utils/timeslot.c \
+   $(SDK_ROOT)/modules/nrfx/mdk/gcc_startup_nrf52840.S \
+   $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_rtt.c \
 diff --git a/firmware/application/src/app_cmd.c b/firmware/application/src/app_cmd.c
-index 93db070..aacb6da 100644
+index 93db070..30e7129 100644
 --- a/firmware/application/src/app_cmd.c
 +++ b/firmware/application/src/app_cmd.c
 @@ -14,6 +14,7 @@
@@ -158,10 +194,27 @@ index 93db070..aacb6da 100644
          return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
      }
      settings_set_long_button_press_config(data[0], data[1]);
-@@ -223,6 +225,84 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
+@@ -223,6 +225,101 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
      return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
  }
  
++static data_frame_tx_t *cmd_processor_get_rf_diagnostics(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    if (length != 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    uint32_t payload[12];
++    nfc_tag_14a_get_diagnostics(payload);
++    for (uint8_t i = 0; i < 12; i++) payload[i] = U32HTONL(payload[i]);
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)payload);
++}
++
++extern void app_get_startup_diagnostics(uint32_t output[9]);
++static data_frame_tx_t *cmd_processor_get_startup_diagnostics(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
++    if (length != 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
++    uint32_t payload[9];
++    app_get_startup_diagnostics(payload);
++    for (uint8_t i = 0; i < 9; i++) payload[i] = U32HTONL(payload[i]);
++    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)payload);
++}
++
 +static data_frame_tx_t *cmd_processor_get_polling_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
 +    uint8_t payload = settings_get_polling_enable() ? 1 : 0;
 +    return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), &payload);
@@ -243,7 +296,7 @@ index 93db070..aacb6da 100644
  static data_frame_tx_t *cmd_processor_get_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
      uint8_t is_enable = settings_get_ble_pairing_enable();
      return data_frame_make(cmd, STATUS_SUCCESS, 1, &is_enable);
-@@ -1202,10 +1282,10 @@ static data_frame_tx_t *cmd_processor_get_slot_info(uint16_t cmd, uint16_t statu
+@@ -1202,10 +1299,10 @@ static data_frame_tx_t *cmd_processor_get_slot_info(uint16_t cmd, uint16_t statu
      struct {
          uint16_t hf_tag_type;
          uint16_t lf_tag_type;
@@ -256,7 +309,7 @@ index 93db070..aacb6da 100644
          tag_emulation_get_specific_types_by_slot(slot, &tag_types);
          payload[slot].hf_tag_type = U16HTONS(tag_types.tag_hf);
          payload[slot].lf_tag_type = U16HTONS(tag_types.tag_lf);
-@@ -2004,8 +2084,8 @@ static data_frame_tx_t *cmd_processor_get_enabled_slots(uint16_t cmd, uint16_t s
+@@ -2004,8 +2101,8 @@ static data_frame_tx_t *cmd_processor_get_enabled_slots(uint16_t cmd, uint16_t s
      struct {
          uint8_t enabled_hf;
          uint8_t enabled_lf;
@@ -267,7 +320,7 @@ index 93db070..aacb6da 100644
          payload[slot].enabled_hf = is_slot_enabled(slot, TAG_SENSE_HF);
          payload[slot].enabled_lf = is_slot_enabled(slot, TAG_SENSE_LF);
      }
-@@ -3197,7 +3277,23 @@ static data_frame_tx_t *cmd_processor_hf14a_4_debug_counters(uint16_t cmd, uint1
+@@ -3197,7 +3294,25 @@ static data_frame_tx_t *cmd_processor_hf14a_4_debug_counters(uint16_t cmd, uint1
      return data_frame_make(cmd, STATUS_SUCCESS, 4, buf);
  }
  #endif
@@ -278,6 +331,8 @@ index 93db070..aacb6da 100644
 +}
 +
  static cmd_data_map_t m_data_cmd_map[] = {
++    { DATA_CMD_GET_RF_DIAGNOSTICS, NULL, cmd_processor_get_rf_diagnostics, NULL },
++    { DATA_CMD_GET_STARTUP_DIAGNOSTICS, NULL, cmd_processor_get_startup_diagnostics, NULL },
 +    { DATA_CMD_GET_MOCHA_IDENTITY, NULL, cmd_processor_get_mocha_identity, NULL },
 +    { DATA_CMD_GET_POLLING_ENABLE, NULL, cmd_processor_get_polling_enable, NULL },
 +    { DATA_CMD_SET_POLLING_ENABLE, NULL, cmd_processor_set_polling_enable, NULL },
@@ -292,7 +347,7 @@ index 93db070..aacb6da 100644
      {    DATA_CMD_CHANGE_DEVICE_MODE,           NULL,                        cmd_processor_change_device_mode,            NULL                   },
      {    DATA_CMD_GET_DEVICE_MODE,              NULL,                        cmd_processor_get_device_mode,               NULL                   },
 diff --git a/firmware/application/src/app_main.c b/firmware/application/src/app_main.c
-index fd4e9dc..41480bb 100644
+index fd4e9dc..00da0de 100644
 --- a/firmware/application/src/app_main.c
 +++ b/firmware/application/src/app_main.c
 @@ -15,6 +15,9 @@
@@ -305,15 +360,42 @@ index fd4e9dc..41480bb 100644
  #include "nrfx_nfct.h"
  #include "nrfx_power.h"
  #include "nrf_drv_lpcomp.h"
-@@ -34,6 +37,7 @@ NRF_LOG_MODULE_REGISTER();
+@@ -34,11 +37,15 @@ NRF_LOG_MODULE_REGISTER();
  #include "dataframe.h"
  #include "fds_util.h"
  #include "hex_utils.h"
 +#include "polling.h"
++#include "lf_tag_em.h"
++#include "nfc_14a.h"
  #include "rfid_main.h"
  #include "syssleep.h"
  #include "tag_emulation.h"
-@@ -197,6 +201,8 @@ static void button_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t a
+ #include "usb_main.h"
+ #include "rgb_marquee.h"
++#include "usb_led_mode.h"
+ #include "tag_persistence.h"
+ #include "settings.h"
+ 
+@@ -66,6 +73,18 @@ volatile bool m_is_field_on = false;
+ 
+ // cpu reset reason
+ static uint32_t m_reset_source;
++static uint32_t m_boot_profile[8];
++static uint32_t m_boot_cycle_start, m_boot_dwt_ctrl, m_boot_demcr;
++
++static void boot_profile_mark(uint8_t stage) {
++    // Active CPU time at 64MHz; excludes bootloader and time with CPU halted.
++    m_boot_profile[stage] = (DWT->CYCCNT - m_boot_cycle_start) / 64000u;
++}
++
++void app_get_startup_diagnostics(uint32_t output[9]) {
++    memcpy(output, m_boot_profile, sizeof(m_boot_profile));
++    output[8] = m_reset_source;
++}
+ static uint32_t m_gpregret_val;
+ 
+ #define GPREGRET_CLEAR_VALUE_DEFAULT (0xFFFFFFFFUL)
+@@ -197,6 +216,8 @@ static void button_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t a
   * @param None
   * @return None
   */
@@ -322,7 +404,7 @@ index fd4e9dc..41480bb 100644
  static void timer_button_event_handle(void *arg) {
      // if button press during shutdown, it's only to wake up quickly
      if (m_system_off_processing) {
-@@ -257,6 +263,15 @@ static void timer_button_event_handle(void *arg) {
+@@ -257,6 +278,15 @@ static void timer_button_event_handle(void *arg) {
                  m_is_btn_long_press = is_long_press;
              }
          }
@@ -338,7 +420,7 @@ index fd4e9dc..41480bb 100644
      }
  }
  
-@@ -290,6 +305,7 @@ static void system_off_enter(void) {
+@@ -290,6 +320,7 @@ static void system_off_enter(void) {
      m_system_off_processing = true;
      // Save tag data
      tag_emulation_save();
@@ -346,7 +428,7 @@ index fd4e9dc..41480bb 100644
  
      if (g_is_low_battery_shutdown) {
          // Don't create too complex animations, just blink LED1 three times.
-@@ -310,8 +326,8 @@ static void system_off_enter(void) {
+@@ -310,8 +341,8 @@ static void system_off_enter(void) {
          // Power off animation
          uint8_t animation_config = settings_get_animation_config();
          uint8_t slot = tag_emulation_get_slot();
@@ -357,7 +439,7 @@ index fd4e9dc..41480bb 100644
          if (m_reset_source & (NRF_POWER_RESETREAS_NFC_MASK | NRF_POWER_RESETREAS_LPCOMP_MASK)) {
              if (m_reset_source & NRF_POWER_RESETREAS_NFC_MASK) {
                  color = 1;
-@@ -448,6 +464,7 @@ static void check_wakeup_src(void) {
+@@ -448,6 +479,7 @@ static void check_wakeup_src(void) {
      sd_power_gpregret_clr(1, GPREGRET_CLEAR_VALUE_DEFAULT);
  
  
@@ -365,7 +447,7 @@ index fd4e9dc..41480bb 100644
      /*
       * Note: The hibernation described below is deep hibernation, stopping any non-wakeup source peripherals and stopping the CPU to achieve the lowest power consumption
       *
-@@ -460,8 +477,8 @@ static void check_wakeup_src(void) {
+@@ -460,8 +492,8 @@ static void check_wakeup_src(void) {
       */
  
      uint8_t slot = tag_emulation_get_slot();
@@ -376,7 +458,7 @@ index fd4e9dc..41480bb 100644
  
      if (m_reset_source & NRF_POWER_RESETREAS_OFF_MASK) {
          NRF_LOG_INFO("WakeUp from button");
-@@ -472,9 +489,9 @@ static void check_wakeup_src(void) {
+@@ -472,9 +504,9 @@ static void check_wakeup_src(void) {
          if (animation_config == SettingsAnimationModeFull) {
              rgb_marquee_sweep_to(color, !dir, 11);
              rgb_marquee_sweep_to(color, dir, 11);
@@ -388,7 +470,7 @@ index fd4e9dc..41480bb 100644
          } else if (animation_config == SettingsAnimationModeSymmetric) {
              rgb_marquee_symmetric_out(color, slot);
          } else {
-@@ -483,6 +500,7 @@ static void check_wakeup_src(void) {
+@@ -483,6 +515,7 @@ static void check_wakeup_src(void) {
  
          // The indicator of the current card slot lights up at the end of the animation
          light_up_by_slot();
@@ -396,23 +478,47 @@ index fd4e9dc..41480bb 100644
  
          // If no operation follows, wait for the configured timeout and then deep hibernate
          sleep_timer_start(settings_get_sleep_timeout());
-@@ -509,13 +527,14 @@ static void check_wakeup_src(void) {
-         uint8_t animation_config = settings_get_animation_config();
-         if (animation_config == SettingsAnimationModeFull) {
-             // In the case of field wake-up, only one round of RGB is swept as the power-on animation
--            rgb_marquee_sweep_to(color, !dir, dir ? slot : 7 - slot);
-+            rgb_marquee_sweep_to(color, !dir, dir ? (slot % 8) : 7 - (slot % 8));
-         } else if (animation_config == SettingsAnimationModeSymmetric) {
-             rgb_marquee_symmetric_out(color, slot);
-         } else {
-             set_slot_light_color(color);
-         }
-         light_up_by_slot();
-+        polling_start();
+@@ -490,33 +523,14 @@ static void check_wakeup_src(void) {
+                (m_gpregret_val & RESET_ON_LF_FIELD_EXISTS_Msk)) {
+         NRF_LOG_INFO("WakeUp from rfid field");
  
+-        // wake up from hf field.
+-        if (m_reset_source & NRF_POWER_RESETREAS_NFC_MASK) {
+-            color = 1;  // HF field show G.
+-            NRF_LOG_INFO("WakeUp from HF");
+-        } else {
+-            color = 2;  // LF filed show B.
+-            if (m_gpregret_val & RESET_ON_LF_FIELD_EXISTS_Msk) {
+-                NRF_LOG_INFO("Reset by LF");
+-            } else {
+-                NRF_LOG_INFO("WakeUp from LF");
+-            }
+-        }
+-
+-        // It is currently the wake-up system of the emulation card event, we can make the strong lights on the field first
+-        TAG_FIELD_LED_ON();
+-
+-        uint8_t animation_config = settings_get_animation_config();
+-        if (animation_config == SettingsAnimationModeFull) {
+-            // In the case of field wake-up, only one round of RGB is swept as the power-on animation
+-            rgb_marquee_sweep_to(color, !dir, dir ? slot : 7 - slot);
+-        } else if (animation_config == SettingsAnimationModeSymmetric) {
+-            rgb_marquee_symmetric_out(color, slot);
+-        } else {
+-            set_slot_light_color(color);
+-        }
++        // RF wake must enable reception before any blocking LED animation.
++        // Readers may send their first request while the MCU is still booting.
++        tag_mode_enter();
++        nfc_tag_14a_startup_recovery_schedule();
+         light_up_by_slot();
+ 
++        polling_start();
++
          // We can only run tag emulation at field wakeup source.
          sleep_timer_start(SLEEP_DELAY_MS_FIELD_WAKEUP);
-@@ -529,6 +548,7 @@ static void check_wakeup_src(void) {
+     } else if (m_reset_source & NRF_POWER_RESETREAS_VBUS_MASK) {
+@@ -529,6 +543,7 @@ static void check_wakeup_src(void) {
  
          // Start Bluetooth radio with USB plugged in, no deep hibernation required
          advertising_start(false);
@@ -420,7 +526,7 @@ index fd4e9dc..41480bb 100644
      } else {
          NRF_LOG_INFO("First power system");
  
-@@ -559,6 +579,7 @@ static void check_wakeup_src(void) {
+@@ -559,6 +574,7 @@ static void check_wakeup_src(void) {
          // Show RGB for slot.
          set_slot_light_color(color);
          light_up_by_slot();
@@ -428,7 +534,7 @@ index fd4e9dc..41480bb 100644
  
          // If the USB is plugged in when first powered up, we can do something accordingly
          if (nrfx_power_usbstatus_get() != NRFX_POWER_USB_STATE_DISCONNECTED) {
-@@ -584,6 +605,7 @@ static void cycle_slot(bool dec) {
+@@ -584,6 +600,7 @@ static void cycle_slot(bool dec) {
          slot_new = tag_emulation_slot_find_next(slot_now);
      }
      // Update status only if the new card slot switch is valid
@@ -436,7 +542,7 @@ index fd4e9dc..41480bb 100644
      tag_emulation_change_slot(slot_new, true); // Tell the analog card module that we need to switch card slots
      // Turn off the LEDs in case we were showing the battery status
      rgb_marquee_stop();
-@@ -593,6 +615,8 @@ static void cycle_slot(bool dec) {
+@@ -593,6 +610,8 @@ static void cycle_slot(bool dec) {
      }
      // Go back to the color corresponding to the field enablement type
      apply_slot_change(slot_now, slot_new);
@@ -445,7 +551,7 @@ index fd4e9dc..41480bb 100644
  }
  
  static void show_battery(void) {
-@@ -630,7 +654,7 @@ static void show_battery(void) {
+@@ -630,7 +649,7 @@ static void show_battery(void) {
  static void offline_status_blink_color(uint8_t blink_color) {
      uint8_t slot = tag_emulation_get_slot();
  
@@ -454,7 +560,7 @@ index fd4e9dc..41480bb 100644
  
      uint32_t *p_led_array = hw_get_led_array();
  
-@@ -908,6 +932,43 @@ static void run_button_function_by_settings(settings_button_function_t sbf) {
+@@ -908,6 +927,43 @@ static void run_button_function_by_settings(settings_button_function_t sbf) {
              show_battery();
              break;
  
@@ -498,7 +604,7 @@ index fd4e9dc..41480bb 100644
          default:
              NRF_LOG_ERROR("Unsupported button function");
              break;
-@@ -948,9 +1009,15 @@ static void button_press_process(void) {
+@@ -948,9 +1004,20 @@ static void button_press_process(void) {
  extern bool g_usb_port_opened;
  static void blink_usb_led_status(void) {
      uint8_t slot = tag_emulation_get_slot();
@@ -508,7 +614,12 @@ index fd4e9dc..41480bb 100644
 +    uint8_t dir = (slot % 8) > 3 ? 1 : 0;
      static bool is_working = false;
 +    static uint8_t last_usb_mode;
-+    uint8_t usb_mode = g_usb_port_opened ? 2 : 1;
++    static usb_led_mode_t led_mode;
++    bool usb_disconnected = nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED;
++    if (usb_disconnected) led_mode = (usb_led_mode_t){0};
++    bool show_connected = usb_led_mode_update(&led_mode,
++        !usb_disconnected && g_usb_port_opened, app_timer_cnt_get(), APP_TIMER_TICKS(1000));
++    uint8_t usb_mode = show_connected ? 2 : 1;
 +    if (usb_mode != last_usb_mode) {
 +        rgb_marquee_stop();
 +        last_usb_mode = usb_mode;
@@ -516,33 +627,96 @@ index fd4e9dc..41480bb 100644
      if (nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED) {
          if (is_working) {
              rgb_marquee_stop();
-@@ -1019,6 +1086,7 @@ int main(void) {
+@@ -962,7 +1029,7 @@ static void blink_usb_led_status(void) {
+         // The light effect is enabled and can be displayed
+         if (rgb_marquee_is_enabled()) {
+             is_working = true;
+-            if (g_usb_port_opened) {
++            if (show_connected) {
+                 uint8_t animation_config = settings_get_animation_config();
+                 if (animation_config == SettingsAnimationModeSymmetric) {
+                     rgb_marquee_usb_open_symmetric(color);
+@@ -1000,25 +1067,39 @@ static void ble_passkey_init(void) {
+ /**@brief Application main function.
+  */
+ int main(void) {
++    m_boot_demcr = CoreDebug->DEMCR;
++    m_boot_dwt_ctrl = DWT->CTRL;
++    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
++    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
++    m_boot_cycle_start = DWT->CYCCNT;
+     hw_connect_init();        // Remember to initialize the pins first
+ 
+     fds_util_init();          // Initialize fds tool
+     settings_load_config();   // Load settings from flash
++    boot_profile_mark(0);
+ 
+     init_leds();              // LED initialization
++    // Show the field wake before BLE, random seeding, and RF clock waits.
++    if (NRF_POWER->RESETREAS & (NRF_POWER_RESETREAS_NFC_MASK | NRF_POWER_RESETREAS_LPCOMP_MASK)) {
++        TAG_FIELD_LED_ON();
++    }
+     log_init();               // Log initialization
+     gpio_te_init();           // Initialize GPIO matrix library
+     app_timers_init();        // Initialize soft timer
+     power_management_init();  // Power management initialization
+     usb_cdc_init();           // USB cdc emulation initialization
+     ble_slave_init();         // Bluetooth protocol stack initialization
++    boot_profile_mark(1);
+ 
+     rng_drv_and_srand_init(); // Random number generator initialization
++    boot_profile_mark(2);
+     bsp_timer_init();         // Initialize timeout timer
+     bsp_timer_start();        // Start BSP TIMER and prepare it for processing business logic
      button_init();            // Button initialization for handling business logic
      sleep_timer_init();       // Soft timer initialization for hibernation
      tag_emulation_init();     // Analog card initialization
++    boot_profile_mark(3);
 +    polling_init();           // Fixed-delay slot polling timer
      rgb_marquee_init();       // Light effect initialization
  
      ble_passkey_init();       // init ble connect key.
-@@ -1040,6 +1108,13 @@ int main(void) {
+@@ -1026,11 +1107,17 @@ int main(void) {
+     // cmd callback register
+     on_data_frame_complete(on_data_frame_received);
+ 
++    boot_profile_mark(4);
+     check_wakeup_src();       // Detect wake-up source and decide BLE broadcast and subsequent hibernation action according to the wake-up source
++    boot_profile_mark(5);
+     tag_mode_enter();         // Enter card emulation mode by default
++    boot_profile_mark(6);
+ 
+     // usbd event listener
+     APP_ERROR_CHECK(app_usbd_power_events_enable());
++    boot_profile_mark(7);
++    DWT->CTRL = m_boot_dwt_ctrl;
++    CoreDebug->DEMCR = m_boot_demcr;
+ 
+     bsp_wdt_init();
+     // Enter main loop.
+@@ -1040,6 +1127,17 @@ int main(void) {
          lesc_event_process();
          // Button event process
          button_press_process();
 +        // Fixed-delay slot polling process
++        nfc_tag_14a_startup_recovery_process();
 +        if (m_ab_reboot_pending) {
 +            settings_save_config();
 +            tag_emulation_save();
 +            nrf_pwr_mgmt_shutdown(NRF_PWR_MGMT_SHUTDOWN_RESET);
 +        }
 +        polling_process();
++        if (get_device_mode() == DEVICE_MODE_TAG) {
++            sleep_rf_update(nfc_tag_14a_field_present() || lf_reader_field_present());
++        }
  
  #if defined(PROJECT_CHAMELEON_ULTRA)
          // Field generator rainbow animation
 diff --git a/firmware/application/src/data_cmd.h b/firmware/application/src/data_cmd.h
-index 5a33b66..dc78090 100644
+index 5a33b66..21d07cd 100644
 --- a/firmware/application/src/data_cmd.h
 +++ b/firmware/application/src/data_cmd.h
-@@ -214,3 +214,14 @@
+@@ -214,3 +214,17 @@
  #define DATA_CMD_LF_SNIFF                       (3031)
  
  #endif
@@ -557,20 +731,41 @@ index 5a33b66..dc78090 100644
 +#define DATA_CMD_SET_AB_REBOOT_ENABLE (1106)
 +#define DATA_CMD_GET_SLOT_POLLING_SKIP (1107)
 +#define DATA_CMD_SET_SLOT_POLLING_SKIP (1108)
++
++#define DATA_CMD_GET_RF_DIAGNOSTICS (1109)
++#define DATA_CMD_GET_STARTUP_DIAGNOSTICS (1110)
 diff --git a/firmware/application/src/rfid/nfctag/hf/nfc_14a.c b/firmware/application/src/rfid/nfctag/hf/nfc_14a.c
-index 1ed7846..0b6eb57 100644
+index 1ed7846..c393fb0 100644
 --- a/firmware/application/src/rfid/nfctag/hf/nfc_14a.c
 +++ b/firmware/application/src/rfid/nfctag/hf/nfc_14a.c
-@@ -16,6 +16,8 @@ NRF_LOG_MODULE_REGISTER();
+@@ -16,6 +16,10 @@ NRF_LOG_MODULE_REGISTER();
  #include "rfid_main.h"
  #include "syssleep.h"
  #include "tag_emulation.h"
 +#include "polling.h"
 +#include "app_util_platform.h"
++#include "rf_clock.h"
++#include "app_timer.h"
  
  
  #if NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
-@@ -365,6 +367,8 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
+@@ -24,9 +28,15 @@ NRF_LOG_MODULE_REGISTER();
+ #define NRF_NFCT_PARITY_FRAMECONFIG 0x04;
+ #endif
+ 
++static bool m_polling_rx_paused;
++static volatile uint32_t m_diag_detected, m_diag_lost, m_diag_rx, m_diag_selected;
++static bool m_startup_recovery_pending;
++static uint32_t m_startup_recovery_at;
++
+ //Use macro definition data to receive data enable to achieve
+ #define NRFX_NFCT_RX_BYTES                                                                                          \
+     do {                                                                                                            \
++        if (m_polling_rx_paused) break;                                                                            \
+         NRF_NFCT->RXD.FRAMECONFIG = NRF_NFCT_PARITY_FRAMECONFIG;                                                    \
+         NRF_NFCT->PACKETPTR = (uint32_t)m_nfc_rx_buffer;                                                            \
+         NRF_NFCT->MAXLEN = ((uint32_t)MAX_NFC_RX_BUFFER_SIZE << NFCT_MAXLEN_MAXLEN_Pos) & NFCT_MAXLEN_MAXLEN_Msk;   \
+@@ -365,6 +375,8 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
      if (m_sniff_cb != NULL) {
          m_sniff_cb(p_data, szDataBits);
      }
@@ -579,18 +774,20 @@ index 1ed7846..0b6eb57 100644
      // Manually draw frame, separate data and strange school inspection
  #if !NFC_TAG_14A_RX_PARITY_AUTO_DEL_ENABLE
      if (szDataBits >= 9) {
-@@ -529,6 +533,7 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
+@@ -529,6 +541,8 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
                      // NRF_LOG_INFO("SELECT CLx %02x%02x%02x%02x received\n", p_data[2], p_data[3], p_data[4], p_data[5]);
                      if (cl_finished) {
                          // NRF_LOG_INFO("[MFEMUL_SELECT] m_tag_state_14a = MFEMUL_WORK");
++                        m_diag_selected++;
 +                        polling_lock_hf_transaction();
                          m_tag_state_14a = NFC_TAG_STATE_14A_ACTIVE;
                          if (!m_sniff_passive) {
                              nfc_tag_14a_tx_bytes(auto_coll_res->sak, 1, true);
-@@ -651,12 +656,14 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+@@ -651,12 +665,15 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
      // Select action to process.
      switch (p_event->evt_id) {
          case NRFX_NFCT_EVT_FIELD_DETECTED: {
++            m_diag_detected++;
 +            polling_note_hf_field(true);
              sleep_timer_stop();
  
@@ -603,23 +800,34 @@ index 1ed7846..0b6eb57 100644
              TAG_FIELD_LED_ON()
  
              NRF_LOG_INFO("HF FIELD DETECTED");
-@@ -676,6 +683,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+@@ -671,11 +688,16 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+             NRF_NFCT->TASKS_ACTIVATE = 1;
+ #endif
+ 
+-            //Directly enable receiving
++            // Activation is asynchronous on nRF52840; READY arms reception.
++            break;
++        }
++        case NRFX_NFCT_EVT_READY: {
+             NRFX_NFCT_RX_BYTES
              break;
          }
          case NRFX_NFCT_EVT_FIELD_LOST: {
++            m_diag_lost++;
 +            polling_note_hf_field(false);
              g_is_tag_emulating = false;
              // call sleep_timer_start *after* unsetting g_is_tag_emulating
              sleep_timer_start(SLEEP_DELAY_MS_FIELD_NFC_LOST);
-@@ -712,7 +720,6 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+@@ -712,7 +734,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
              break;
          }
          case NRFX_NFCT_EVT_RX_FRAMEEND: {
 -            set_slot_light_color(RGB_GREEN);
++            m_diag_rx++;
              TAG_FIELD_LED_ON()
  
              // NRF_LOG_INFO("RX FRAMEEND.\n");
-@@ -761,6 +768,8 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
+@@ -761,6 +783,8 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
   * @param state New state
   */
  void nfc_tag_14a_set_state(nfc_tag_14a_state_t state) {
@@ -628,7 +836,27 @@ index 1ed7846..0b6eb57 100644
      m_tag_state_14a = state;
  }
  
-@@ -822,3 +831,19 @@ void nfc_tag_14a_set_reset_enable(bool enable) {
+@@ -790,6 +814,7 @@ static enum  {
+ void nfc_tag_14a_sense_switch(bool enable) {
+     if (m_nfc_sense_state == NFC_SENSE_STATE_NONE || m_nfc_sense_state == NFC_SENSE_STATE_DISABLE) {
+         if (enable) {
++            rf_clock_acquire(RF_CLOCK_HF);
+             m_nfc_sense_state = NFC_SENSE_STATE_ENABLE;
+             // Initialized interrupt event and callback
+             nrfx_nfct_config_t nnct = { .rxtx_int_mask = (uint32_t)0xFFFFFFFF, .cb = nfc_tag_14a_event_callback };
+@@ -805,6 +830,11 @@ void nfc_tag_14a_sense_switch(bool enable) {
+             //Directly anti -initialization NFC peripherals can turn off NFC field induction
+             // SDK inside us to call us nrfx_nfct_disable
+             nrfx_nfct_uninit();
++            rf_clock_release(RF_CLOCK_HF);
++            m_polling_rx_paused = false;
++            m_tag_state_14a = NFC_TAG_STATE_14A_IDLE;
++            m_is_responded = false;
++            polling_note_hf_field(false);
+         }
+     }
+ }
+@@ -822,3 +852,92 @@ void nfc_tag_14a_set_reset_enable(bool enable) {
  bool nfc_tag_14a_is_reset_enable() {
      return reset_if_field_lost;
  }
@@ -638,21 +866,94 @@ index 1ed7846..0b6eb57 100644
 +    return m_nfc_sense_state == NFC_SENSE_STATE_ENABLE && nrfx_nfct_field_check();
 +}
 +
++void nfc_tag_14a_startup_recovery_schedule(void) {
++    m_startup_recovery_at = app_timer_cnt_get();
++    m_startup_recovery_pending = true;
++}
++
++void nfc_tag_14a_startup_recovery_process(void) {
++    if (!m_startup_recovery_pending) return;
++    // Any received frame means the initial receiver works. Never restart an
++    // ongoing transaction, and never retry this recovery repeatedly.
++    if (m_diag_rx || m_diag_selected) {
++        m_startup_recovery_pending = false;
++        return;
++    }
++    if (app_timer_cnt_diff_compute(app_timer_cnt_get(), m_startup_recovery_at)
++            < APP_TIMER_TICKS(100)) return;
++    if (!nfc_tag_14a_field_present()) {
++        m_startup_recovery_pending = false;
++        return;
++    }
++    bool recover = false;
++    CRITICAL_REGION_ENTER();
++    if (!m_diag_rx && !m_diag_selected &&
++            NRF_NFCT->NFCTAGSTATE == NFCT_NFCTAGSTATE_NFCTAGSTATE_Idle &&
++            !NRF_NFCT->EVENTS_RXFRAMESTART) {
++        recover = nfc_tag_14a_polling_quiesce();
++        if (recover) m_startup_recovery_pending = false;
++    }
++    CRITICAL_REGION_EXIT();
++    if (recover) {
++        // Rebuild only HF reception; card data and active slot stay loaded.
++        nfc_tag_14a_sense_switch(false);
++        nfc_tag_14a_sense_switch(true);
++    }
++}
++
 +bool nfc_tag_14a_polling_quiesce(void) {
 +    bool allowed;
 +    // Close the check/disable race against RX/SELECT interrupts. No flash or
 +    // animation work occurs in this short critical region.
 +    CRITICAL_REGION_ENTER();
 +    allowed = polling_hf_can_switch();
-+    if (allowed) nfc_tag_14a_sense_switch(false);
++    if (allowed) {
++        m_polling_rx_paused = true;
++        nrf_nfct_int_disable(NRF_NFCT_INT_RXFRAMESTART_MASK | NRF_NFCT_INT_RXFRAMEEND_MASK |
++            NRF_NFCT_INT_RXERROR_MASK | NRF_NFCT_INT_TXFRAMESTART_MASK | NRF_NFCT_INT_TXFRAMEEND_MASK);
++        NRF_NFCT->EVENTS_RXFRAMEEND = 0;
++        NRF_NFCT->EVENTS_TXFRAMEEND = 0;
++        NRF_NFCT->EVENTS_RXERROR = 0;
++    }
 +    CRITICAL_REGION_EXIT();
 +    return allowed;
 +}
++
++void nfc_tag_14a_polling_resume(void) {
++    CRITICAL_REGION_ENTER();
++    m_tag_state_14a = NFC_TAG_STATE_14A_IDLE;
++    m_is_responded = false;
++    m_polling_rx_paused = false;
++    if (nfc_tag_14a_field_present()) {
++        g_is_tag_emulating = true;
++        sleep_timer_stop();
++        nfc_fdt_reset();
++        NRFX_NFCT_RX_BYTES
++    }
++    CRITICAL_REGION_EXIT();
++}
++
++void nfc_tag_14a_get_diagnostics(uint32_t output[12]) {
++    CRITICAL_REGION_ENTER();
++    output[0] = m_diag_detected;
++    output[1] = m_diag_lost;
++    output[2] = m_diag_rx;
++    output[3] = m_diag_selected;
++    output[4] = nrf_nfct_field_status_get();
++    output[5] = NRF_CLOCK->HFCLKSTAT;
++    output[6] = NRF_NFCT->INTENSET;
++    output[7] = m_tag_state_14a;
++    output[8] = m_polling_rx_paused;
++    output[9] = m_nfc_sense_state;
++    output[10] = NRF_NFCT->NFCTAGSTATE;
++    output[11] = NRF_NFCT->RXD.AMOUNT;
++    CRITICAL_REGION_EXIT();
++}
 diff --git a/firmware/application/src/rfid/nfctag/hf/nfc_14a.h b/firmware/application/src/rfid/nfctag/hf/nfc_14a.h
-index fa8cb52..8085d87 100644
+index fa8cb52..2b1332b 100644
 --- a/firmware/application/src/rfid/nfctag/hf/nfc_14a.h
 +++ b/firmware/application/src/rfid/nfctag/hf/nfc_14a.h
-@@ -143,3 +143,7 @@ void nfc_tag_14a_set_reset_enable(bool enable);
+@@ -143,3 +143,13 @@ void nfc_tag_14a_set_reset_enable(bool enable);
  bool nfc_tag_14a_is_reset_enable();
  
  #endif
@@ -660,11 +961,25 @@ index fa8cb52..8085d87 100644
 +bool nfc_tag_14a_field_present(void);
 +
 +bool nfc_tag_14a_polling_quiesce(void);
++
++void nfc_tag_14a_polling_resume(void);
++
++void nfc_tag_14a_get_diagnostics(uint32_t output[12]);
++void nfc_tag_14a_startup_recovery_schedule(void);
++void nfc_tag_14a_startup_recovery_process(void);
 diff --git a/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c b/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c
-index 6994329..06bc658 100644
+index 6994329..06655d6 100644
 --- a/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c
 +++ b/firmware/application/src/rfid/nfctag/lf/lf_tag_em.c
-@@ -39,7 +39,18 @@ static tag_specific_type_t m_tag_type = TAG_TYPE_UNDEFINED;
+@@ -6,6 +6,7 @@
+ #include "fds_util.h"
+ #include "nrf_gpio.h"
+ #include "nrf_soc.h"
++#include "rf_clock.h"
+ #include "nrfx_lpcomp.h"
+ #include "nrfx_pwm.h"
+ #include "protocols/em410x.h"
+@@ -39,7 +40,18 @@ static tag_specific_type_t m_tag_type = TAG_TYPE_UNDEFINED;
  const nrfx_pwm_t m_broadcast = NRFX_PWM_INSTANCE(0);
  const nrf_pwm_sequence_t *m_pwm_seq = NULL;
  
@@ -683,7 +998,7 @@ index 6994329..06bc658 100644
      // Open the incident interruption, so that the next event can be in and out normally
      g_is_tag_emulating = false;  // Reset the flag in the emulation
      m_is_lf_emulating = false;
-@@ -82,13 +93,15 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event) {
+@@ -82,13 +94,15 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event) {
      nrfx_lpcomp_disable();
  
      // set the emulation status logo bit
@@ -700,7 +1015,7 @@ index 6994329..06bc658 100644
      TAG_FIELD_LED_ON()
  
      // Play a finite burst then stop — field check happens in EVT_STOPPED after
-@@ -121,6 +134,11 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
+@@ -121,6 +135,11 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
      bsp_delay_ms(2);  // let peak detector drain: ~2 ms time constant on LF_RSSI
      if (is_lf_field_exists()) {
          // Field still present — play another finite burst then check again.
@@ -712,7 +1027,7 @@ index 6994329..06bc658 100644
          nrfx_pwm_simple_playback(&m_broadcast, m_pwm_seq, 10, NRFX_PWM_FLAG_STOP);
      } else {
          // Field gone — clean up.
-@@ -128,6 +146,10 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
+@@ -128,6 +147,10 @@ static void pwm_handler(nrfx_pwm_evt_type_t event_type) {
      }
  }
  
@@ -723,17 +1038,36 @@ index 6994329..06bc658 100644
  static void pwm_init(void) {
      nrfx_pwm_config_t cfg = NRFX_PWM_DEFAULT_CONFIG;
      cfg.output_pins[0] = LF_MOD;
-@@ -184,6 +206,9 @@ static void lf_sense_disable(void) {
+@@ -163,14 +186,8 @@ static void lf_sense_enable(void) {
+     // which rules out coherent demodulation or phase-lock-based approaches,
+     // but does not preclude the differential-phase encodings supported here.
+     //
+-    // Paired release in lf_sense_disable(). SD reference-counts HFXO requests,
+-    // so this coexists with BLE. Both functions run from thread context
+-    // (tag_mode_enter/tag_emulation_sense_end) where SVCs are safe.
+-    sd_clock_hfclk_request();
+-    uint32_t hfclk_running = 0;
+-    while (!hfclk_running) {
+-        sd_clock_hfclk_is_running(&hfclk_running);
+-    }
++    // Keep the shared HFXO request while either HF or LF emulation needs it.
++    rf_clock_acquire(RF_CLOCK_LF);
+ 
+     lpcomp_init();
+     pwm_init();  // use precise hardware pwm to broadcast card id
+@@ -184,7 +201,10 @@ static void lf_sense_disable(void) {
      nrfx_lpcomp_uninit();
      m_pwm_seq = NULL;
      m_is_lf_emulating = false;
+-    sd_clock_hfclk_release();
 +    m_lf_reader_present = false;
 +    m_polling_pause_requested = false;
 +    m_polling_paused = false;
-     sd_clock_hfclk_release();
++    rf_clock_release(RF_CLOCK_LF);
  }
  
-@@ -445,3 +470,16 @@ bool lf_tag_idteck_data_factory(uint8_t slot, tag_specific_type_t tag_type) {
+ static enum {
+@@ -445,3 +465,16 @@ bool lf_tag_idteck_data_factory(uint8_t slot, tag_specific_type_t tag_type) {
      };
      return lf_tag_data_factory(slot, tag_type, tag_id, sizeof(tag_id));
  }
@@ -943,10 +1277,10 @@ index 59c0221..d3e1d2e 100644
      map->id = id + slot;
 diff --git a/firmware/application/src/rfid/polling.c b/firmware/application/src/rfid/polling.c
 new file mode 100644
-index 0000000..13d02a8
+index 0000000..aa1c88d
 --- /dev/null
 +++ b/firmware/application/src/rfid/polling.c
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,164 @@
 +#include "polling.h"
 +
 +#include "app_timer.h"
@@ -1077,7 +1411,15 @@ index 0000000..13d02a8
 +            m_polling_pending = true;
 +            return;
 +        }
-+        tag_emulation_change_slot(slot_new, true);
++        if (m_session_hf) {
++            // Keep NFCT field/clock state alive while replacing card data.
++            lf_tag_125khz_sense_switch(false);
++            tag_emulation_change_slot(slot_new, false);
++            tag_emulation_sense_switch(TAG_SENSE_LF, true);
++            nfc_tag_14a_polling_resume();
++        } else {
++            tag_emulation_change_slot(slot_new, true);
++        }
 +        // RF polling feedback must not block the main loop for a sweep.
 +        light_up_by_slot();
 +    } else {
@@ -1226,7 +1568,7 @@ index 5b9b723..d2d78b2 100644
 +
 +uint8_t get_slot_display_color(uint8_t slot);
 diff --git a/firmware/application/src/rgb_marquee.c b/firmware/application/src/rgb_marquee.c
-index 414aba6..5bb1a20 100644
+index 414aba6..7b8e098 100644
 --- a/firmware/application/src/rgb_marquee.c
 +++ b/firmware/application/src/rgb_marquee.c
 @@ -38,13 +38,27 @@ static uint8_t rgb_marquee_usb_open_step = 0;
@@ -1399,31 +1741,163 @@ index 414aba6..5bb1a20 100644
          nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
          bsp_delay_ms(50);
          setled = start < stop ? setled + 1 : setled - 1;
-@@ -472,9 +500,9 @@ void rgb_marquee_usb_idle(void) {
-                 pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
-                 pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
-                 pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
+@@ -424,121 +452,70 @@ void rgb_marquee_sweep_from_to(uint8_t color, uint8_t start, uint8_t stop) {
+ }
+ 
+ 
+-// Charging animation
+-// the current percentage of the battery 0-4 4 represents full electric breathing light
+-volatile bool callback_waiting6 = 0;
+-void rgb_marquee_usb_idle_pwm_callback(nrfx_pwm_evt_type_t event_type) {
+-    if (event_type == NRF_DRV_PWM_EVT_FINISHED) {
+-        callback_waiting6 = 1;
+-    }
+-}
++// Charging animation: one PWM owner for the four centre LEDs. Update the
++// EasyDMA values in place; stop only at the dark colour boundary or takeover.
+ void rgb_marquee_usb_idle(void) {
+     uint32_t *led_array = hw_get_led_array();
++    static uint8_t light_level;
+     const uint16_t delay_time = 25;
+-    static int16_t light_level = 99; //LED brightness value
+ 
+-    if (!g_usb_led_marquee_enable && rgb_marquee_usb_idle_step != 0) {
+-        light_level = 99;
+-        callback_waiting6 = 0;
++    if (!g_usb_led_marquee_enable) {
+         rgb_marquee_stop();
+         return;
+     }
+ 
+     if (rgb_marquee_usb_idle_step == 0) {
+-        set_slot_light_color(rgb_marquee_usb_idle_color);
++        rgb_pwm_uninit();
++        // Blank GPIO latches left by the previous animation before changing
++        // the shared colour lines. Only LEDs 3..6 belong to this animation.
+         for (uint8_t i = 0; i < RGB_LIST_NUM; i++) {
+             nrf_gpio_pin_clear(led_array[i]);
+         }
+-        pwm_config.output_pins[0] = led_array[2];
+-        pwm_config.output_pins[1] = led_array[3];
+-        pwm_config.output_pins[2] = led_array[4];
+-        pwm_config.output_pins[3] = led_array[5];
++        light_level = 0;
++        pwm_sequ_val.channel_0 = get_pwmduty(0);
++        pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
++        pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
++        pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
++        for (uint8_t i = 0; i < 4; i++) {
++            pwm_config.output_pins[i] = led_array[i + 2];
++        }
++        set_slot_light_color(rgb_marquee_usb_idle_color);
++        rgb_pwm_init(NULL);
++        nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+         rgb_marquee_usb_idle_step = 1;
+-
+-        // Reset the state of the lamp when the USB is not turned on
+         rgb_marquee_usb_open_step = 0;
++        bsp_set_timer(timer, 0);
++        return;
+     }
+ 
+-    if (rgb_marquee_usb_idle_step == 1) {
+-        light_level  = 0;
+-        rgb_marquee_usb_idle_step = 2;
+-    }
+-
+-    if (rgb_marquee_usb_idle_step == 2 || rgb_marquee_usb_idle_step == 3 || rgb_marquee_usb_idle_step == 4) {
+-        if (light_level <= 99) {
+-            if (rgb_marquee_usb_idle_step == 2) {
+-                //Treatment brightness
+-                pwm_sequ_val.channel_0 = get_pwmduty(light_level);
+-                pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
+-                pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
+-                pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
 -                nrfx_pwm_uninit(&pwm0_ins); //Close PWM output
-+                rgb_pwm_uninit(); //Close PWM output
-                 set_slot_light_color(rgb_marquee_usb_idle_color);
+-                set_slot_light_color(rgb_marquee_usb_idle_color);
 -                nrf_drv_pwm_init(&pwm0_ins, &pwm_config, rgb_marquee_usb_idle_pwm_callback);
-+                rgb_pwm_init(rgb_marquee_usb_idle_pwm_callback);
-                 nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
-                 rgb_marquee_usb_idle_step = 3;
-             }
-@@ -509,9 +537,9 @@ void rgb_marquee_usb_idle(void) {
-                 pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
-                 pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
-                 pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
+-                nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+-                rgb_marquee_usb_idle_step = 3;
+-            }
+-            if (rgb_marquee_usb_idle_step == 3) {  //Waiting for the output of the PWM module to complete
+-                if (callback_waiting6 != 0) {
+-                    rgb_marquee_usb_idle_step = 4;
+-                    bsp_set_timer(timer, 0);
+-                }
+-            }
+-            if (rgb_marquee_usb_idle_step == 4) {
+-                if (!NO_TIMEOUT_1MS(timer, delay_time)) {
+-                    callback_waiting = 0;
+-                    light_level++;
+-                    rgb_marquee_usb_idle_step = 2;
+-                }
+-            }
+-        } else {
+-            rgb_marquee_usb_idle_step = 5;
+-        }
+-    }
+-
+-    if (rgb_marquee_usb_idle_step == 5) {
+-        light_level = 99;
+-        rgb_marquee_usb_idle_step = 6;
++    if (NO_TIMEOUT_1MS(timer, delay_time)) return;
++    bsp_set_timer(timer, 0);
++    if (rgb_marquee_usb_idle_step == 3) {
++        rgb_pwm_uninit();
++        for (uint8_t i = 0; i < RGB_LIST_NUM; i++) nrf_gpio_pin_clear(led_array[i]);
++        uint8_t new_color;
++        do { new_color = rand() % 6; } while (new_color == rgb_marquee_usb_idle_color);
++        rgb_marquee_usb_idle_color = new_color;
++        rgb_marquee_usb_idle_step = 0;
++        return;
+     }
+-
+-    if (rgb_marquee_usb_idle_step == 6 || rgb_marquee_usb_idle_step == 7 || rgb_marquee_usb_idle_step == 8) {
+-        if (light_level >= 0) {
+-            if (rgb_marquee_usb_idle_step == 6) {
+-                //Treatment brightness
+-                pwm_sequ_val.channel_0 = get_pwmduty(light_level);
+-                pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
+-                pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
+-                pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
 -                nrfx_pwm_uninit(&pwm0_ins); //Close PWM output
-+                rgb_pwm_uninit(); //Close PWM output
-                 set_slot_light_color(rgb_marquee_usb_idle_color);
+-                set_slot_light_color(rgb_marquee_usb_idle_color);
 -                nrf_drv_pwm_init(&pwm0_ins, &pwm_config, rgb_marquee_usb_idle_pwm_callback);
-+                rgb_pwm_init(rgb_marquee_usb_idle_pwm_callback);
-                 nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
-                 rgb_marquee_usb_idle_step = 7;
-             }
-@@ -539,6 +567,7 @@ void rgb_marquee_usb_idle(void) {
+-                nrf_drv_pwm_simple_playback(&pwm0_ins, &seq, 1, NRF_DRV_PWM_FLAG_LOOP);
+-                rgb_marquee_usb_idle_step = 7;
+-            }
+-            if (rgb_marquee_usb_idle_step == 7) {  //Waiting for the output of the PWM module to complete
+-                if (callback_waiting6 != 0) {
+-                    rgb_marquee_usb_idle_step = 8;
+-                    bsp_set_timer(timer, 0);
+-                }
+-            }
+-            if (rgb_marquee_usb_idle_step == 8) {
+-                if (!NO_TIMEOUT_1MS(timer, delay_time)) {
+-                    callback_waiting = 0;
+-                    light_level--;
+-                    rgb_marquee_usb_idle_step = 6;
+-                }
+-            }
+-        } else {
+-            rgb_marquee_usb_idle_step = 0;
+-            //if (++rgb_marquee_usb_idle_color == RGB_WHITE) rgb_marquee_usb_idle_color = RGB_RED;
+-            uint8_t new_color = rand() % 6;
+-            for (; new_color == rgb_marquee_usb_idle_color; new_color = rand() % 6);
+-            rgb_marquee_usb_idle_color = new_color;
++    if (rgb_marquee_usb_idle_step == 1) {
++        if (++light_level == LIGHT_LEVEL_MAX) rgb_marquee_usb_idle_step = 2;
++    } else {
++        if (--light_level == 0) {
++            // Keep the old colour for this completely dark PWM period.
++            // The next tick starts the next colour from darkness.
++            rgb_marquee_usb_idle_step = 3;
+         }
+     }
++    pwm_sequ_val.channel_0 = get_pwmduty(light_level);
++    pwm_sequ_val.channel_1 = pwm_sequ_val.channel_0;
++    pwm_sequ_val.channel_2 = pwm_sequ_val.channel_0;
++    pwm_sequ_val.channel_3 = pwm_sequ_val.channel_0;
  }
  
  void rgb_marquee_symmetric_out(uint8_t color, uint8_t slot) {
@@ -1431,7 +1905,7 @@ index 414aba6..5bb1a20 100644
      uint32_t *led_pins = hw_get_led_array();
  
      //Adjust the color
-@@ -591,14 +620,15 @@ void rgb_marquee_symmetric_out(uint8_t color, uint8_t slot) {
+@@ -591,14 +568,15 @@ void rgb_marquee_symmetric_out(uint8_t color, uint8_t slot) {
              }
          }
  
@@ -1449,7 +1923,7 @@ index 414aba6..5bb1a20 100644
      uint32_t *led_pins = hw_get_led_array();
  
      //Adjust the color
-@@ -651,8 +681,8 @@ void rgb_marquee_symmetric_in(uint8_t color, uint8_t slot) {
+@@ -651,8 +629,8 @@ void rgb_marquee_symmetric_in(uint8_t color, uint8_t slot) {
              }
          }
  
@@ -1606,6 +2080,39 @@ index 704fdea..6d95be4 100644
 +bool settings_get_ab_reboot_enable(void);
 +void settings_set_ab_reboot_enable(bool enable);
  #endif
+diff --git a/firmware/application/src/usb_led_mode.h b/firmware/application/src/usb_led_mode.h
+new file mode 100644
+index 0000000..ca8a257
+--- /dev/null
++++ b/firmware/application/src/usb_led_mode.h
+@@ -0,0 +1,27 @@
++#ifndef USB_LED_MODE_H
++#define USB_LED_MODE_H
++#include <stdbool.h>
++#include <stdint.h>
++
++typedef struct {
++    bool connected;
++    bool candidate;
++    uint32_t since;
++} usb_led_mode_t;
++
++// CDC probes are short-lived connections. Change the visual mode only after
++// the requested state stays stable; transport processing remains immediate.
++static inline bool usb_led_mode_update(usb_led_mode_t *state, bool opened,
++                                      uint32_t now, uint32_t settle_ticks) {
++    if (opened != state->candidate) {
++        state->candidate = opened;
++        state->since = now;
++    }
++    // app_timer uses a 24-bit RTC counter.
++    if (state->connected != state->candidate &&
++        ((now - state->since) & 0x00ffffffu) >= settle_ticks) {
++        state->connected = state->candidate;
++    }
++    return state->connected;
++}
++#endif
 diff --git a/firmware/application/src/utils/fds_ids.h b/firmware/application/src/utils/fds_ids.h
 index 0e35472..ad34a81 100644
 --- a/firmware/application/src/utils/fds_ids.h
@@ -1640,6 +2147,239 @@ index 109ddb7..986550e 100644
              return true;
          } else {
              NRF_LOG_INFO("FDS buffer too small, can't run memcpy, fds size = %d, buffer size = %d", flash_record.p_header->length_words * 4, *length);
+diff --git a/firmware/application/src/utils/rf_clock.c b/firmware/application/src/utils/rf_clock.c
+new file mode 100644
+index 0000000..ed5d645
+--- /dev/null
++++ b/firmware/application/src/utils/rf_clock.c
+@@ -0,0 +1,18 @@
++#include "rf_clock.h"
++#include "nrf_drv_clock.h"
++static uint8_t m_owners;
++void rf_clock_acquire(uint8_t owner) {
++    if (m_owners & owner) return;
++    if (!m_owners) {
++        // USB uses this same reference counter. Direct SoftDevice requests
++        // would be cancelled when USB releases its last driver reference.
++        nrf_drv_clock_hfclk_request(NULL);
++        while (!nrf_drv_clock_hfclk_is_running()) {}
++    }
++    m_owners |= owner;
++}
++void rf_clock_release(uint8_t owner) {
++    if (!(m_owners & owner)) return;
++    m_owners &= (uint8_t)~owner;
++    if (!m_owners) nrf_drv_clock_hfclk_release();
++}
+diff --git a/firmware/application/src/utils/rf_clock.h b/firmware/application/src/utils/rf_clock.h
+new file mode 100644
+index 0000000..57367c8
+--- /dev/null
++++ b/firmware/application/src/utils/rf_clock.h
+@@ -0,0 +1,7 @@
++#pragma once
++#include <stdint.h>
++#define RF_CLOCK_HF 1u
++#define RF_CLOCK_LF 2u
++// Thread context only; RF shares the SDK clock reference counter with USB.
++void rf_clock_acquire(uint8_t owner);
++void rf_clock_release(uint8_t owner);
+diff --git a/firmware/application/src/utils/syssleep.c b/firmware/application/src/utils/syssleep.c
+index 07e0f07..f6dd707 100644
+--- a/firmware/application/src/utils/syssleep.c
++++ b/firmware/application/src/utils/syssleep.c
+@@ -74,3 +74,29 @@ void sleep_system_run(void (*sysOffSleep)(), void (*sysOnSleep)()) {
+         sysOnSleep();
+     }
+ }
++
++// Reconcile physical reader presence in the main loop. FIELD_LOST can be
++// swallowed during sensor teardown/reinit; do not depend on that interrupt
++// alone to release the emulating flag and arm battery standby.
++void sleep_rf_update(bool field_present) {
++    static bool seen_field;
++    static bool checking_idle;
++    static uint32_t idle_since;
++    if (field_present) {
++        if (!seen_field) sleep_timer_stop();
++        seen_field = true;
++        checking_idle = false;
++        return;
++    }
++    if (!seen_field && !g_is_tag_emulating) return;
++    if (!checking_idle) {
++        idle_since = app_timer_cnt_get();
++        checking_idle = true;
++        return;
++    }
++    if (app_timer_cnt_diff_compute(app_timer_cnt_get(), idle_since) < APP_TIMER_TICKS(100)) return;
++    seen_field = false;
++    checking_idle = false;
++    g_is_tag_emulating = false;
++    sleep_timer_start(SLEEP_DELAY_MS_FIELD_NFC_LOST);
++}
+diff --git a/firmware/application/src/utils/syssleep.h b/firmware/application/src/utils/syssleep.h
+index 4e1e99c..12f18d8 100644
+--- a/firmware/application/src/utils/syssleep.h
++++ b/firmware/application/src/utils/syssleep.h
+@@ -2,6 +2,7 @@
+ #define SYS_SLEEP_H__
+ 
+ #include <stdint.h>
++#include <stdbool.h>
+ 
+ //           Wake up equipment
+ #define SLEEP_DELAY_MS_BUTTON_WAKEUP            8000    // The sleep delay of the button awakened
+@@ -18,6 +19,7 @@
+ 
+ 
+ void sleep_timer_init(void);
++void sleep_rf_update(bool field_present);
+ void sleep_timer_start(uint32_t time_ms);
+ void sleep_timer_stop(void);
+ void sleep_system_run(void (*sysOffSleep)(), void (*sysOnSleep)());
+diff --git a/firmware/nrf52_sdk/modules/nrfx/drivers/include/nrfx_nfct.h b/firmware/nrf52_sdk/modules/nrfx/drivers/include/nrfx_nfct.h
+index 7e801e0..f5a34aa 100644
+--- a/firmware/nrf52_sdk/modules/nrfx/drivers/include/nrfx_nfct.h
++++ b/firmware/nrf52_sdk/modules/nrfx/drivers/include/nrfx_nfct.h
+@@ -89,6 +89,7 @@ typedef enum
+ {
+     NRFX_NFCT_EVT_FIELD_DETECTED = NRF_NFCT_INT_FIELDDETECTED_MASK, ///< External NFC field is detected.
+     NRFX_NFCT_EVT_FIELD_LOST     = NRF_NFCT_INT_FIELDLOST_MASK,     ///< External NFC Field is lost.
++    NRFX_NFCT_EVT_READY          = NRF_NFCT_INT_READY_MASK,        ///< Peripheral activation completed.
+     NRFX_NFCT_EVT_SELECTED       = NRF_NFCT_INT_SELECTED_MASK,      ///< Tag was selected by the poller.
+     NRFX_NFCT_EVT_RX_FRAMESTART  = NRF_NFCT_INT_RXFRAMESTART_MASK,  ///< Data frame reception started.
+     NRFX_NFCT_EVT_RX_FRAMEEND    = NRF_NFCT_INT_RXFRAMEEND_MASK,    ///< Data frame is received.
+diff --git a/firmware/nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c b/firmware/nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c
+index 2435612..67052ec 100644
+--- a/firmware/nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c
++++ b/firmware/nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c
+@@ -59,6 +59,7 @@ typedef struct
+ {
+     const nrfx_timer_t timer;                     /**< Timer instance that supports the correct NFC field detection. */
+ #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
++    bool               validation_pending;       /**< Activation validation belongs to this driver lifetime. */
+     bool               fieldevents_filter_active; /**< Flag that indicates that the field events are ignored. */
+     bool               is_hfclk_on;               /**< HFCLK has started - one of the NFC activation conditions. */
+     bool               is_delayed;                /**< Required time delay has passed - one of the NFC activation conditions. */
+@@ -149,6 +150,22 @@ typedef struct
+ 
+ static nrfx_nfct_control_block_t m_nfct_cb;
+ 
++// Reset all field-event bookkeeping when the sensor lifetime changes.
++static void nrfx_nfct_session_clear(void)
++{
++    // A new sensing lifetime must generate FIELD_DETECTED even when the
++    // previous lifetime was stopped while the reader field was still on.
++    m_nfct_cb.field_on = false;
++#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
++    m_timer_workaround.validation_pending = false;
++    m_timer_workaround.fieldevents_filter_active = false;
++    m_timer_workaround.is_hfclk_on = false;
++    m_timer_workaround.is_delayed = false;
++#elif defined(USE_TIMER_WORKAROUND)
++    m_timer_workaround.field_state_cnt = 0;
++#endif
++}
++
+ /**
+  * @brief Common part of the setup used for the NFCT initialization and reinitialization.
+  */
+@@ -270,11 +287,10 @@ static void nrfx_nfct_field_event_handler(volatile nrfx_nfct_field_state_t field
+ #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
+ static void nrfx_nfct_activate_check(void)
+ {
+-    static bool is_field_validation_pending = false;
+ 
+-    if (is_field_validation_pending)
++    if (m_timer_workaround.validation_pending)
+     {
+-        is_field_validation_pending                  = false;
++        m_timer_workaround.validation_pending                  = false;
+         m_timer_workaround.fieldevents_filter_active = false;
+ 
+         // Check the field status and take action if field is lost.
+@@ -285,7 +301,7 @@ static void nrfx_nfct_activate_check(void)
+     if ((m_timer_workaround.is_hfclk_on) && (m_timer_workaround.is_delayed))
+     {
+         nrf_nfct_task_trigger(NRF_NFCT_TASK_ACTIVATE);
+-        is_field_validation_pending = true;
++        m_timer_workaround.validation_pending = true;
+ 
+         // Start the timer second time to validate whether the tag has locked to the field.
+         nrfx_timer_clear(&m_timer_workaround.timer);
+@@ -416,7 +432,11 @@ static inline nrfx_err_t nrfx_nfct_field_timer_config(void)
+  */
+ static void timer_nfc_close_handle(void *arg) {
+     NRFX_CRITICAL_SECTION_ENTER();
+-    nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
++    // A timeout queued before stop/reinit must not shut down a new session.
++    if (m_nfct_cb.state != NRFX_DRV_STATE_UNINITIALIZED && !m_nfct_cb.field_on)
++    {
++        nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
++    }
+     NRFX_CRITICAL_SECTION_EXIT();
+ }
+ 
+@@ -456,6 +476,7 @@ nrfx_err_t nrfx_nfct_init(nrfx_nfct_config_t const * p_config)
+         return NRFX_ERROR_INVALID_STATE;
+     }
+ 
++    nrfx_nfct_session_clear();
+     m_nfct_cb.config = *p_config;
+     nrfx_nfct_hw_init_setup();
+ 
+@@ -510,20 +531,31 @@ void nrfx_nfct_uninit(void)
+     nrfx_timer_uninit(&m_timer_workaround.timer);
+ #endif // defined(USE_TIMER_WORKAROUND)
+ 
++    nrfx_nfct_session_clear();
+     m_nfct_cb.state = NRFX_DRV_STATE_UNINITIALIZED;
+ }
+ 
+ void nrfx_nfct_enable(void)
+ {
+     nrf_nfct_error_status_clear(NRFX_NFCT_ERROR_STATUS_ALL_MASK);
++    nrf_nfct_event_clear(NRF_NFCT_EVENT_READY);
+     nrf_nfct_task_trigger(NRF_NFCT_TASK_SENSE);
+ 
+     nrf_nfct_int_enable(NRF_NFCT_INT_FIELDDETECTED_MASK | NRF_NFCT_INT_ERROR_MASK |
+-                        NRF_NFCT_INT_SELECTED_MASK);
++                        NRF_NFCT_INT_SELECTED_MASK | NRF_NFCT_INT_READY_MASK);
+ #if !defined(NRF52832_XXAA) && !defined(NRF52832_XXAB)
+     nrf_nfct_int_enable(NRF_NFCT_INT_FIELDLOST_MASK);
+ #endif // !defined(NRF52832_XXAA) && !defined(NRF52832_XXAB)
+ 
++    // A field that woke SYSTEMOFF may already be present before interrupts
++    // are enabled. Do not depend on a fresh FIELDDETECTED edge after boot.
++    NRFX_CRITICAL_SECTION_ENTER();
++    if (nrfx_nfct_field_check())
++    {
++        nrfx_nfct_field_event_handler(NRFX_NFC_FIELD_STATE_ON);
++    }
++    NRFX_CRITICAL_SECTION_EXIT();
++
+     NRFX_LOG_INFO("Start");
+ }
+ 
+@@ -784,6 +816,17 @@ void nrfx_nfct_irq_handler(void)
+         nrfx_nfct_field_event_handler(current_field);
+     }
+ 
++    if (NRFX_NFCT_EVT_ACTIVE(READY))
++    {
++        nrf_nfct_event_clear(NRF_NFCT_EVENT_READY);
++        // A READY left over from a lost field must not restart reception.
++        if (m_nfct_cb.field_on)
++        {
++            nrfx_nfct_evt_t nfct_evt = { .evt_id = NRFX_NFCT_EVT_READY };
++            NRFX_NFCT_CB_HANDLE(m_nfct_cb.config.cb, nfct_evt);
++        }
++    }
++
+     // ChameleonUltra: fix busy IRQ when HF field is on and a first frame got received
+     if (NRFX_NFCT_EVT_ACTIVE(RXFRAMESTART))
+     {
 diff --git a/software/script/chameleon_cmd.py b/software/script/chameleon_cmd.py
 index d96137d..6f4ac3e 100644
 --- a/software/script/chameleon_cmd.py
@@ -1674,10 +2414,10 @@ index f8e7cde..41a9d16 100644
      def to_fw(index: int):  # can be int or SlotNumber
 diff --git a/tests/test_host.py b/tests/test_host.py
 new file mode 100644
-index 0000000..4220ca3
+index 0000000..bc25467
 --- /dev/null
 +++ b/tests/test_host.py
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,465 @@
 +"""Compile actual firmware modules against mock hardware; never access USB/RF."""
 +import importlib.util
 +import re
@@ -1786,21 +2526,25 @@ index 0000000..4220ca3
 +        files['tag_emulation.h']=COMMON+'''#define TAG_MAX_SLOT_NUM 16
 +#define TAG_SENSE_HF 2
 +#define TAG_SENSE_LF 1
-+static uint8_t slot; static bool hf[16], lf[16], skip[16]; static int switches;
++static uint8_t slot; static bool hf[16], lf[16], skip[16]; static int switches, hf_restarts;
 +static uint8_t tag_emulation_get_slot(void) { return slot; }
 +static uint8_t tag_emulation_slot_find_next(uint8_t n) { for(int i=0;i<16;i++) { n=(n+1)%16; if(hf[n]||lf[n]) return n; } return n; }
 +static bool tag_emulation_slot_polling_skip(uint8_t n) { return skip[n]; }
 +static bool is_slot_enabled(uint8_t n,int sense) { return sense==2?hf[n]:lf[n]; }
-+static void tag_emulation_change_slot(uint8_t n,bool b) { slot=n; switches++; }
++static void tag_emulation_change_slot(uint8_t n,bool b) { slot=n; switches++; if(b) hf_restarts++; }
++static void tag_emulation_sense_switch(int sense,bool enable) { assert(sense==TAG_SENSE_LF && enable); }
 +'''
 +        files['lf_tag_em.h']=COMMON+'''static bool lf_field, lf_boundary, pause;
 +static bool lf_reader_field_present(void) { return lf_field; }
 +static bool lf_polling_pause_at_boundary(void) { pause=true; return lf_boundary; }
 +static void lf_polling_resume(void) { pause=false; }
++static void lf_tag_125khz_sense_switch(bool enable) { assert(!enable); }
 +'''
 +        files['nfc_14a.h']=COMMON+'''static bool hf_field, quiesce_ok=true;
 +static bool nfc_tag_14a_field_present(void) { return hf_field; }
 +static bool nfc_tag_14a_polling_quiesce(void) { return quiesce_ok; }
++static int hf_resumes;
++static void nfc_tag_14a_polling_resume(void) { hf_resumes++; }
 +'''
 +        self.compile_run(files, '''#include "polling.c"
 +static void tick(void) { now+=500; polling_timer_handler(0); polling_process(); }
@@ -1808,6 +2552,7 @@ index 0000000..4220ca3
 + polling_init(); polling_start(); tick(); assert(switches==0);
 + hf[0]=hf[8]=hf[15]=true; hf_field=true; polling_note_hf_field(true);
 + polling_process(); tick(); assert(slot==8); skip[15]=true; tick(); assert(slot==0);
++ assert(hf_resumes==2 && hf_restarts==0);
 + polling_lock_hf_transaction(); tick(); assert(slot==0);
 + hf_field=false; polling_note_hf_field(false); polling_process(); assert(slot==0);
 + hf_field=true; polling_process(); quiesce_ok=false; tick(); assert(slot==0);
@@ -1856,8 +2601,10 @@ index 0000000..4220ca3
 +                depth+=(text[end]=='{')-(text[end]=='}'); end+=1
 +            return text[start:end]
 +        c=(SRC/'rgb_marquee.c').read_text()
-+        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
++        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_idle','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
 +        self.compile_run({'common.h':COMMON}, '#include "common.h"\n'+r"""
++#define LIGHT_LEVEL_MAX 99
++#define RGB_LIST_NUM 8
 +#define NRF_DRV_PWM_FLAG_LOOP 1
 +#define NRF_DRV_PWM_PIN_NOT_USED 0xffffffff
 +typedef void (*nrfx_pwm_handler_t)(int);
@@ -1866,7 +2613,11 @@ index 0000000..4220ca3
 +static int pwm0_ins, seq, timer_value, color_value, starts;
 +static int *timer=&timer_value;
 +static bool g_usb_led_marquee_enable=true;
-+static uint8_t rgb_marquee_usb_idle_step, rgb_marquee_usb_open_step;
++static uint8_t rgb_marquee_usb_idle_step, rgb_marquee_usb_open_step, rgb_marquee_usb_idle_color;
++static unsigned int cleared;
++static void nrf_gpio_pin_clear(uint32_t p) { cleared |= 1u<<p; }
++static int rand(void) { return 1; }
++static uint16_t get_pwmduty(uint8_t level) { return 1000-level*10; }
 +static struct {uint16_t channel_0,channel_1,channel_2,channel_3;} pwm_sequ_val;
 +static struct {uint32_t output_pins[4];} pwm_config;
 +static uint32_t pins[]={0,1,2,3,4,5,6,7}, reverse[]={7,6,5,4,3,2,1,0};
@@ -1892,6 +2643,201 @@ index 0000000..4220ca3
 + int previous=starts; timer_value=99; rgb_marquee_usb_open_symmetric(4); assert(starts==previous);
 + timer_value=100; rgb_marquee_usb_open_symmetric(4); rgb_marquee_usb_open_symmetric(4); assert(starts==previous+1);
 + g_usb_led_marquee_enable=false; rgb_marquee_usb_open_symmetric(4); assert(rgb_marquee_usb_open_step==0);
++ g_usb_led_marquee_enable=true; rgb_marquee_stop(); cleared=0;
++ rgb_marquee_usb_idle(); assert(cleared==255 && pwm_sequ_val.channel_0==1000);
++ for(int i=0;i<4;i++) assert(pwm_config.output_pins[i]==(uint32_t)(i+2));
++ int idle_starts=starts, old_color=color_value;
++ for(int i=0;i<198;i++) {
++  timer_value=25; rgb_marquee_usb_idle();
++  assert(starts==idle_starts && color_value==old_color);
++ }
++ assert(rgb_marquee_usb_idle_step==3 && pwm_sequ_val.channel_0==1000);
++ timer_value=24; rgb_marquee_usb_idle(); assert(rgb_marquee_usb_idle_step==3);
++ timer_value=25; rgb_marquee_usb_idle(); assert(!m_pwm_initialized && rgb_marquee_usb_idle_step==0);
++ rgb_marquee_usb_idle(); assert(color_value!=old_color && pwm_sequ_val.channel_0==1000);
++ assert(starts==idle_starts+1);
++ rgb_marquee_stop(); rgb_marquee_usb_open_sweep(0,0); rgb_marquee_stop();
++ cleared=0; rgb_marquee_usb_idle(); assert(cleared==255 && pwm_sequ_val.channel_0==1000);
++ for(int i=0;i<4;i++) assert(pwm_config.output_pins[i]==(uint32_t)(i+2));
++ g_usb_led_marquee_enable=false; rgb_marquee_usb_idle(); assert(!m_pwm_initialized);
++
++ return 0;
++}
++""")
++
++    def test_usb_probe_does_not_change_led_mode(self):
++        self.compile_run({'common.h':COMMON,'usb_led_mode.h':(SRC/'usb_led_mode.h').read_text()}, r"""
++#include "common.h"
++#include "usb_led_mode.h"
++int main(void) {
++ usb_led_mode_t s={0};
++ for(uint32_t t=0;t<10000;t+=1000) {
++  assert(!usb_led_mode_update(&s,true,t,1000));
++  assert(!usb_led_mode_update(&s,true,t+500,1000));
++  assert(!usb_led_mode_update(&s,false,t+600,1000));
++ }
++ assert(!usb_led_mode_update(&s,true,10000,1000));
++ assert(!usb_led_mode_update(&s,true,10999,1000));
++ assert(usb_led_mode_update(&s,true,11000,1000));
++ assert(usb_led_mode_update(&s,false,12000,1000));
++ assert(usb_led_mode_update(&s,true,12500,1000));
++ assert(usb_led_mode_update(&s,false,14000,1000));
++ assert(!usb_led_mode_update(&s,false,15000,1000));
++ s=(usb_led_mode_t){0};
++ assert(!usb_led_mode_update(&s,true,0xffff00,1000));
++ assert(!usb_led_mode_update(&s,true,0x2e7,1000));
++ assert(usb_led_mode_update(&s,true,0x2e8,1000));
++ return 0;
++}
++""")
++
++    def test_nfct_lifecycle_and_stale_close_timeout(self):
++        text=(SRC.parents[1]/'nrf52_sdk/modules/nrfx/drivers/src/nrfx_nfct.c').read_text()
++        def extract(name):
++            start=text.index('static void '+name+'('); first=text.index('{',start); depth=1; end=first+1
++            while depth:
++                depth+=(text[end]=='{')-(text[end]=='}'); end+=1
++            return text[start:end]
++        program=r"""
++#include "common.h"
++#define NRF52840_XXAA 1
++#define NRFX_DRV_STATE_UNINITIALIZED 0
++#define NRF_NFCT_TASK_SENSE 1
++#define NRFX_CRITICAL_SECTION_ENTER()
++#define NRFX_CRITICAL_SECTION_EXIT()
++static struct { bool field_on; int state; } m_nfct_cb;
++static struct { bool validation_pending, fieldevents_filter_active, is_hfclk_on, is_delayed; } m_timer_workaround;
++static int senses;
++static void nrf_nfct_task_trigger(int task) { assert(task==1); senses++; }
++"""+extract('nrfx_nfct_session_clear')+extract('timer_nfc_close_handle')+r"""
++int main(void) {
++ m_nfct_cb.field_on=true;
++ m_timer_workaround.validation_pending=true;
++ m_timer_workaround.fieldevents_filter_active=true;
++ m_timer_workaround.is_hfclk_on=true; m_timer_workaround.is_delayed=true;
++ nrfx_nfct_session_clear();
++ assert(!m_nfct_cb.field_on && !m_timer_workaround.validation_pending && !m_timer_workaround.fieldevents_filter_active);
++ assert(!m_timer_workaround.is_hfclk_on && !m_timer_workaround.is_delayed);
++ m_nfct_cb.state=1; m_nfct_cb.field_on=true; timer_nfc_close_handle(0); assert(senses==0);
++ m_nfct_cb.state=0; m_nfct_cb.field_on=false; timer_nfc_close_handle(0); assert(senses==0);
++ m_nfct_cb.state=1; timer_nfc_close_handle(0); assert(senses==1);
++ return 0;
++}
++"""
++        self.compile_run({'common.h':COMMON},program)
++
++    def test_rf_wake_recovery_is_once_and_skips_active_reception(self):
++        text=(SRC/'rfid/nfctag/hf/nfc_14a.c').read_text()
++        functions=[]
++        for name in ['nfc_tag_14a_startup_recovery_schedule','nfc_tag_14a_startup_recovery_process']:
++            start=text.index('void '+name+'('); first=text.index('{',start); depth=1; end=first+1
++            while depth:
++                depth+=(text[end]=='{')-(text[end]=='}'); end+=1
++            functions.append(text[start:end])
++        program=r"""
++#include "common.h"
++#define CRITICAL_REGION_ENTER()
++#define CRITICAL_REGION_EXIT()
++#define APP_TIMER_TICKS(v) (v)
++#define NFCT_NFCTAGSTATE_NFCTAGSTATE_Idle 3
++static struct { int NFCTAGSTATE, EVENTS_RXFRAMESTART; } hw;
++#define NRF_NFCT (&hw)
++static bool m_startup_recovery_pending, present=true;
++static uint32_t m_startup_recovery_at, now, m_diag_rx, m_diag_selected;
++static int disables,enables;
++static uint32_t app_timer_cnt_get(void) { return now; }
++static uint32_t app_timer_cnt_diff_compute(uint32_t a,uint32_t b) { return a-b; }
++static bool nfc_tag_14a_field_present(void) { return present; }
++static bool nfc_tag_14a_polling_quiesce(void) { return true; }
++static void nfc_tag_14a_sense_switch(bool enable) { if(enable) enables++; else disables++; }
++"""+'\n'.join(functions)+r"""
++int main(void) {
++ hw.NFCTAGSTATE=3; nfc_tag_14a_startup_recovery_schedule();
++ now=99; nfc_tag_14a_startup_recovery_process(); assert(enables==0);
++ now=100; hw.EVENTS_RXFRAMESTART=1; nfc_tag_14a_startup_recovery_process(); assert(enables==0);
++ hw.EVENTS_RXFRAMESTART=0; hw.NFCTAGSTATE=4; nfc_tag_14a_startup_recovery_process(); assert(enables==0);
++ hw.NFCTAGSTATE=3; nfc_tag_14a_startup_recovery_process(); assert(enables==1 && disables==1);
++ now=1000; nfc_tag_14a_startup_recovery_process(); assert(enables==1);
++ nfc_tag_14a_startup_recovery_schedule(); m_diag_rx=1; now+=100;
++ nfc_tag_14a_startup_recovery_process(); assert(!m_startup_recovery_pending && enables==1);
++ m_diag_rx=0; nfc_tag_14a_startup_recovery_schedule(); present=false; now+=100;
++ nfc_tag_14a_startup_recovery_process(); assert(!m_startup_recovery_pending && enables==1);
++ return 0;
++}
++"""
++        self.compile_run({'common.h':COMMON},program)
++
++    def test_shared_rf_clock_survives_hf_lf_polling(self):
++        files={'rf_clock.c':(SRC/'utils/rf_clock.c').read_text(),'rf_clock.h':(SRC/'utils/rf_clock.h').read_text()}
++        files['nrf_drv_clock.h']=COMMON+r"""
++static int requests, releases, polls, references; static bool on;
++static void nrf_drv_clock_hfclk_request(void *handler) { (void)handler; requests++; references++; on=true; }
++static bool nrf_drv_clock_hfclk_is_running(void) { polls++; return on; }
++static void nrf_drv_clock_hfclk_release(void) { assert(references>0); releases++; if (!--references) on=false; }
++"""
++        self.compile_run(files,r"""
++#include "rf_clock.c"
++int main(void) {
++ rf_clock_acquire(RF_CLOCK_HF); rf_clock_acquire(RF_CLOCK_LF);
++ assert(on && requests==1 && polls==1);
++ for(int i=0;i<20;i++) { rf_clock_release(RF_CLOCK_LF); assert(on && releases==0); rf_clock_acquire(RF_CLOCK_LF); }
++ rf_clock_acquire(RF_CLOCK_HF); assert(requests==1);
++ rf_clock_release(RF_CLOCK_HF); assert(on && releases==0);
++ rf_clock_release(RF_CLOCK_LF); assert(!on && releases==1);
++ rf_clock_release(RF_CLOCK_LF); assert(releases==1);
++ rf_clock_acquire(RF_CLOCK_LF); rf_clock_acquire(RF_CLOCK_HF); rf_clock_release(RF_CLOCK_LF);
++ assert(on && requests==2); rf_clock_release(RF_CLOCK_HF); assert(!on && releases==2);
++ // USB detachment must not stop the oscillator while HF owns it.
++ nrf_drv_clock_hfclk_request(NULL);
++ rf_clock_acquire(RF_CLOCK_HF);
++ nrf_drv_clock_hfclk_release();
++ assert(on && references==1);
++ rf_clock_release(RF_CLOCK_HF); assert(!on && references==0);
++ // Conversely, disabling RF must retain an active USB request.
++ nrf_drv_clock_hfclk_request(NULL); rf_clock_acquire(RF_CLOCK_HF);
++ rf_clock_release(RF_CLOCK_HF); assert(on && references==1);
++ nrf_drv_clock_hfclk_release(); assert(!on && references==0);
++ return 0;
++}
++""")
++
++    def test_rf_idle_rearms_battery_standby(self):
++        files={'syssleep.c':(SRC/'utils/syssleep.c').read_text(),
++               'syssleep.h':(SRC/'utils/syssleep.h').read_text()}
++        for h in ['nrf_log.h','nrf_log_ctrl.h','nrf_log_default_backends.h']: files[h]=COMMON
++        files['nrfx_power.h']=COMMON+"""
++#define NRFX_POWER_USB_STATE_DISCONNECTED 0
++static int usb_state;
++static int nrfx_power_usbstatus_get(void) { return usb_state; }
++"""
++        files['app_timer.h']=COMMON+"""
++typedef int ret_code_t;
++#define APP_TIMER_DEF(x) static int x
++#define APP_TIMER_MODE_SINGLE_SHOT 1
++#define APP_TIMER_TICKS(x) (x)
++#define APP_ERROR_CHECK(x) assert((x)==0)
++static uint32_t now; static int arms, stops;
++static int app_timer_create(int *a,int b,void (*f)(void*)) { return 0; }
++static int app_timer_start(int a,uint32_t ticks,void *p) { assert(ticks==3000); arms++; return 0; }
++static int app_timer_stop(int a) { stops++; return 0; }
++static uint32_t app_timer_cnt_get(void) { return now; }
++static uint32_t app_timer_cnt_diff_compute(uint32_t a,uint32_t b) { return (a-b)&0xffffff; }
++"""
++        self.compile_run(files, r"""
++#include "syssleep.c"
++bool g_is_ble_connected, g_is_tag_emulating;
++volatile bool m_is_field_on;
++int main(void) {
++ sleep_timer_init(); sleep_rf_update(false); assert(arms==0);
++ g_is_tag_emulating=true; sleep_rf_update(true);
++ now=1; sleep_rf_update(false); now=100; sleep_rf_update(false); assert(arms==0);
++ now=101; sleep_rf_update(false); assert(!g_is_tag_emulating && arms==1);
++ for(int i=0;i<20;i++) sleep_rf_update(false); assert(arms==1); // not restarted each loop
++ sleep_rf_update(true); now=102; sleep_rf_update(false); now=151; sleep_rf_update(true);
++ assert(arms==1); now=200; sleep_rf_update(false); now=300; sleep_rf_update(false); assert(arms==2);
++ usb_state=1; g_is_tag_emulating=true; now=400; sleep_rf_update(false); now=500; sleep_rf_update(false); assert(arms==2);
++ usb_state=0; g_is_ble_connected=true; sleep_rf_update(true); now=600; sleep_rf_update(false); now=700; sleep_rf_update(false); assert(arms==2);
++ g_is_ble_connected=false; now=0xfffff0; sleep_rf_update(true); sleep_rf_update(false); now=0x60; sleep_rf_update(false); assert(arms==3);
 + return 0;
 +}
 +""")
@@ -1899,8 +2845,8 @@ index 0000000..4220ca3
 +    def test_protocol_has_no_collisions_and_preserves_official(self):
 +        text=(SRC/'data_cmd.h').read_text()
 +        pairs=re.findall(r'#define (DATA_CMD_\w+)\s+\((\d+)\)',text)
-+        extension=[(name,n) for name,n in pairs if 1100 <= int(n) <= 1108]
-+        self.assertEqual(len(extension),9)
++        extension=[(name,n) for name,n in pairs if 1100 <= int(n) <= 1110]
++        self.assertEqual(len(extension),11)
 +        for name,n in extension: self.assertEqual(sum(v==n for _,v in pairs),1)
 +        d=dict(pairs)
 +        self.assertEqual(d['DATA_CMD_GET_LONG_PRESS_THRESHOLD'],'1041')

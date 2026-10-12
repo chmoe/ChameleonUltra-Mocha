@@ -25,14 +25,8 @@ Mocha 1.0.0 是基于最新官方 Chameleon Ultra 固件移植 Mazha 功能的�
 
 Mazha 参考：[`1f44d9a4c66258f2ef16cb90b5262a9d30b0ad98`](https://github.com/Mazha0309/ChameleonUltra-mazha0309/commit/1f44d9a4c66258f2ef16cb90b5262a9d30b0ad98)。
 
-交付固件的构建源码提交：`1fca33a65cd6e0054dbad4f400e6561aff8d622a`。之后的仓库整理提交只调整展示文档、归档上游 CI 并保存构建产物。重建此已交付固件时设置 `MOCHA_SOURCE_REV=1fca33a`。
+交付固件源码提交：`11211b3`，设备版本字符串 `Mocha-1.0.0-11211b3`。重建此固件时设置 `MOCHA_SOURCE_REV=11211b3`。
 
-6 组主机测试、DFU application 哈希和 ECDSA 签名验证通过。独立解压源码归档后重建，BIN 逐字节一致。**尚未刷写设备或进行新固件的实机射频、灯光和断电恢复测试。**
+11 组主机回归、DFU application 哈希和 ECDSA 签名校验通过。已进行有限的 PN532 UID/SELECT 测试及刷机前后16槽数据/设置校验；不代表门禁认证或所有读卡器兼容性验证。
 
-HF 最终 SELECT/ACTIVE 后保持当前槽直到场消失，避免切断认证/读写；这不是门禁成功检测。官方和 Mazha v7 设置无法可靠自动区分，采用保守迁移，详见说明。
-
-## 仓库布局
-
-`firmware/`、`software/`、`hardware/`、`resource/` 为完整源码；`tools/` 为 Mocha 构建与控制工具；`tests/` 为主机模拟；`releases/mocha-1.0.0/` 保存本次构建快照。上游自动发布工作流保存在 `.github/upstream-workflows/`，不在新仓库自动执行。
-
-[上游 README](README_UPSTREAM.md) / [原作者](AUTHORS.md) / [GPLv3](LICENSE)。Nordic SDK 和其他第三方内容保留各自许可证。
+[射频冷唤醒延迟对照](docs/rf-wake-delay-20261012.md)：官方关闭动画后也在500–1200ms请求窗口失败、1500ms首次读取3/3成功；Mocha相应结果为0/3及2/3。当前证据不支持认定延迟为Mocha独有，具体根因尚未完全定位。

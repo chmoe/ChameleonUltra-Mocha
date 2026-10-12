@@ -49,6 +49,7 @@ Compiling file: dataframe.c
 Compiling file: delayed_reset.c
 Compiling file: fds_util.c
 Compiling file: syssleep.c
+Compiling file: rf_clock.c
 Compiling file: timeslot.c
 Assembling file: gcc_startup_nrf52840.S
 Compiling file: nrf_log_backend_rtt.c
@@ -195,19 +196,24 @@ Compiling file: lf_viking_data.c
 Compiling file: lf_jablotron_data.c
 Linking target: ../objects/application.out
    text	   data	    bss	    dec	    hex	filename
- 306988	    788	 108968	 416744	  65be8	../objects/application.out
+ 308756	    788	 109056	 418600	  66328	../objects/application.out
 Preparing: ../objects/application.hex
 Preparing: ../objects/application.bin
 DONE application
 test_cli_identity_gate_and_serial_frame (__main__.FirmwareTests) ... ok
+test_nfct_lifecycle_and_stale_close_timeout (__main__.FirmwareTests) ... ok
 test_polling_scheduler_and_transaction_lock (__main__.FirmwareTests) ... ok
 test_protocol_has_no_collisions_and_preserves_official (__main__.FirmwareTests) ... ok
+test_rf_idle_rearms_battery_standby (__main__.FirmwareTests) ... ok
+test_rf_wake_recovery_is_once_and_skips_active_reception (__main__.FirmwareTests) ... ok
 test_settings_migration_and_flash_failure (__main__.FirmwareTests) ... ok
+test_shared_rf_clock_survives_hf_lf_polling (__main__.FirmwareTests) ... ok
 test_slot_migration_preserves_types_and_skip (__main__.FirmwareTests) ... ok
 test_usb_animation_reset_colors_and_timing (__main__.FirmwareTests) ... ok
+test_usb_probe_does_not_change_led_mode (__main__.FirmwareTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 6 tests in 1.265s
+Ran 11 tests in 4.898s
 
 OK
 Created dist/mocha-ultra-dfu-app.zip
@@ -216,7 +222,7 @@ Created dist/mocha-ultra-dfu-app.zip
   "type": "application",
   "hw_version": 0,
   "sd_req": "0x0100",
-  "application_size": 307776,
+  "application_size": 309544,
   "signature": "ECDSA P-256/SHA-256 verified",
-  "sha256": "8e23763d434c0694f2a5cfed022b882672e900be3eefc49e9a39bf5c753ee3ee"
+  "sha256": "cd691ec5c8229e3636545379a519c3f4978ca08e112e24b034bc5c6d6fa69b0e"
 }
