@@ -5,7 +5,8 @@ GROUP(-lgcc -lc -lnosys)
 
 MEMORY
 {
-  FLASH (rx) : ORIGIN = 0x27000, LENGTH = 0xCC000
+  /* Existing 22 x 8 KiB FDS begins at 0xC7000 with BL at 0xF3000. */
+  FLASH (rx) : ORIGIN = 0x27000, LENGTH = 0xA0000
   RAM (rwx) :  ORIGIN = 0x20002ae8, LENGTH = 0x35518
 }
 

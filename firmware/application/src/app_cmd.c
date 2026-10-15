@@ -1,3 +1,4 @@
+#include "access_trace.h"
 #include "fds_util.h"
 #include "bsp_time.h"
 #include "bsp_delay.h"
@@ -189,9 +190,12 @@ static data_frame_tx_t *cmd_processor_get_button_press_config(uint16_t cmd, uint
 }
 
 static data_frame_tx_t *cmd_processor_set_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonEnterDfuMode) {
+    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonToggleAccessTrace) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
+#if !defined(PROJECT_CHAMELEON_ULTRA)
+    if(data[1]==SettingsButtonToggleAccessTrace) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+#endif
     settings_set_button_press_config(data[0], data[1]);
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
@@ -205,9 +209,12 @@ static data_frame_tx_t *cmd_processor_get_long_button_press_config(uint16_t cmd,
 }
 
 static data_frame_tx_t *cmd_processor_set_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonEnterDfuMode) {
+    if ((length != 2) || (!is_settings_button_type_valid(data[0])) || data[1] > SettingsButtonToggleAccessTrace) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
+#if !defined(PROJECT_CHAMELEON_ULTRA)
+    if(data[1]==SettingsButtonToggleAccessTrace) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+#endif
     settings_set_long_button_press_config(data[0], data[1]);
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
@@ -3300,7 +3307,20 @@ static data_frame_tx_t *cmd_processor_get_mocha_identity(uint16_t cmd, uint16_t 
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(identity) - 1, (uint8_t *)identity);
 }
 
+static data_frame_tx_t *cmd_processor_access_trace(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    uint8_t out[999]; uint16_t outlen;
+    uint16_t result=access_trace_command(cmd,data,length,out,&outlen);
+    return data_frame_make(cmd,result,outlen,out);
+}
+
 static cmd_data_map_t m_data_cmd_map[] = {
+    { 1120, NULL, cmd_processor_access_trace, NULL },
+    { 1121, NULL, cmd_processor_access_trace, NULL },
+    { 1122, NULL, cmd_processor_access_trace, NULL },
+    { 1123, NULL, cmd_processor_access_trace, NULL },
+    { 1124, NULL, cmd_processor_access_trace, NULL },
+    { 1125, NULL, cmd_processor_access_trace, NULL },
+
     { DATA_CMD_GET_RF_DIAGNOSTICS, NULL, cmd_processor_get_rf_diagnostics, NULL },
     { DATA_CMD_GET_STARTUP_DIAGNOSTICS, NULL, cmd_processor_get_startup_diagnostics, NULL },
     { DATA_CMD_GET_MOCHA_IDENTITY, NULL, cmd_processor_get_mocha_identity, NULL },

@@ -1,3 +1,4 @@
+#include "access_trace.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -232,14 +233,16 @@ static void timer_button_event_handle(void *arg) {
     if (nrf_gpio_pin_read(pin) == 1) {
         if (pin == BUTTON_1) {
             // If button is disabled, we can't dispatch key event.
-            if (settings_get_button_press_config('b') != SettingsButtonDisable) {
+            if (settings_get_button_press_config('b') != SettingsButtonDisable ||
+                settings_get_long_button_press_config('b') != SettingsButtonDisable || settings_get_ab_reboot_enable()) {
                 NRF_LOG_INFO("BUTTON_B_PRESS");
                 m_is_b_btn_press = true;
                 m_last_btn_press = app_timer_cnt_get();
             }
         }
         if (pin == BUTTON_2) {
-            if (settings_get_button_press_config('a') != SettingsButtonDisable) {
+            if (settings_get_button_press_config('a') != SettingsButtonDisable ||
+                settings_get_long_button_press_config('a') != SettingsButtonDisable || settings_get_ab_reboot_enable()) {
                 NRF_LOG_INFO("BUTTON_A_PRESS");
                 m_is_a_btn_press = true;
                 m_last_btn_press = app_timer_cnt_get();
@@ -255,7 +258,8 @@ static void timer_button_event_handle(void *arg) {
 
         if (pin == BUTTON_1 && m_is_b_btn_press == true) {
             // If button is disabled, we can't dispatch key event.
-            if (settings_get_button_press_config('b') != SettingsButtonDisable) {
+            m_is_b_btn_press=false;
+            if ((is_long_press ? settings_get_long_button_press_config('b') : settings_get_button_press_config('b')) != SettingsButtonDisable) {
                 m_is_b_btn_release = true;
                 m_is_b_btn_press = false;
                 if (!is_long_press) {
@@ -267,7 +271,8 @@ static void timer_button_event_handle(void *arg) {
             }
         }
         if (pin == BUTTON_2 && m_is_a_btn_press == true) {
-            if (settings_get_button_press_config('a') != SettingsButtonDisable) {
+            m_is_a_btn_press=false;
+            if ((is_long_press ? settings_get_long_button_press_config('a') : settings_get_button_press_config('a')) != SettingsButtonDisable) {
                 m_is_a_btn_release = true;
                 m_is_a_btn_press = false;
                 if (!is_long_press) {
@@ -865,6 +870,9 @@ static void run_button_function_by_settings(settings_button_function_t sbf) {
             break;
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
+        case SettingsButtonToggleAccessTrace:
+            if(get_device_mode()==DEVICE_MODE_TAG && !m_is_field_on) access_trace_button_toggle();
+            break;
         case SettingsButtonCloneIcUid:
             btn_fn_copy_ic_uid();
             break;
@@ -974,6 +982,10 @@ static void run_button_function_by_settings(settings_button_function_t sbf) {
  */
 extern bool g_usb_led_marquee_enable;
 static void button_press_process(void) {
+    if(m_ab_reboot_pending) {
+        m_is_a_btn_release=m_is_b_btn_release=false;
+        return; // A+B remains reboot, not two single-button actions.
+    }
     // Make sure that one of the AB buttons has a click event
     if (m_is_b_btn_release || m_is_a_btn_release) {
         if (m_is_a_btn_release) {
@@ -1097,6 +1109,7 @@ int main(void) {
     bsp_timer_start();        // Start BSP TIMER and prepare it for processing business logic
     button_init();            // Button initialization for handling business logic
     sleep_timer_init();       // Soft timer initialization for hibernation
+    access_trace_init();
     tag_emulation_init();     // Analog card initialization
     boot_profile_mark(3);
     polling_init();           // Fixed-delay slot polling timer
@@ -1145,7 +1158,9 @@ int main(void) {
 #endif
 
         // Led blink at usb status (only if field generator is off)
-        if (!m_is_field_on) {
+        bool trace_feedback_owns_leds = rgb_marquee_trace_process(
+            nfc_tag_14a_field_present() || lf_reader_field_present() || m_is_field_on);
+        if (!m_is_field_on && !trace_feedback_owns_leds) {
             blink_usb_led_status();
         }
 
@@ -1160,6 +1175,10 @@ int main(void) {
         // No task to process, system sleep enter.
         // If system idle sometime, we can enter deep sleep state.
         // Some task process done, we can enter cpu sleep state.
-        sleep_system_run(system_off_enter, nrf_pwr_mgmt_run);
+        access_trace_process(nfc_tag_14a_field_present());
+        bool trace_feedback_on;
+        if(access_trace_take_feedback(&trace_feedback_on)) rgb_marquee_trace_start(trace_feedback_on);
+        if (!access_trace_busy() && !rgb_marquee_trace_pending()) sleep_system_run(system_off_enter, nrf_pwr_mgmt_run);
+        else nrf_pwr_mgmt_run(); // Keep RAM/interface alive without battery standby.
     }
 }

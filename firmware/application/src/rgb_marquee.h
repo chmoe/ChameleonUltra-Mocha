@@ -6,6 +6,9 @@
 
 
 void rgb_marquee_init(void);
+void rgb_marquee_trace_start(bool enabled);
+bool rgb_marquee_trace_process(bool rf_busy);
+bool rgb_marquee_trace_pending(void);
 void rgb_marquee_stop(void);
 void rgb_marquee_reset(void);
 bool rgb_marquee_is_enabled(void);

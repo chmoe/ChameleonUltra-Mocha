@@ -1,3 +1,4 @@
+#include "access_trace.h"
 #include <hal/nrf_nfct.h>
 #include <nrfx_nfct.h>
 #include <nrf_gpio.h>
@@ -665,6 +666,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
     // Select action to process.
     switch (p_event->evt_id) {
         case NRFX_NFCT_EVT_FIELD_DETECTED: {
+            access_trace_field(true);
             m_diag_detected++;
             polling_note_hf_field(true);
             sleep_timer_stop();
@@ -696,6 +698,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_FIELD_LOST: {
+            access_trace_field(false);
             m_diag_lost++;
             polling_note_hf_field(false);
             g_is_tag_emulating = false;

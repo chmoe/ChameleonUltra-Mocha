@@ -1,3 +1,4 @@
+#include "access_trace.h"
 #include <stdlib.h>
 
 #include "nfc_mf1.h"
@@ -538,7 +539,29 @@ void mf1_prng_by_bytes(uint8_t *nonces, uint32_t n) {
 }
 #endif
 
+static uint8_t trace_cmd, trace_block=255, trace_key=255, trace_flags;
+static void trace_request(const uint8_t *p, bool nested) {
+    trace_cmd=p[0]; trace_block=p[1];
+    trace_key=(trace_cmd==CMD_AUTH_A || trace_cmd==CMD_AUTH_B)?(trace_cmd&1):KeyInUse;
+    trace_flags=(nested?1:0) | (m_gen1a_state==GEN1A_STATE_UNLOCKED_RW_WAIT?2:0);
+    access_trace_event(1,trace_cmd,trace_block,trace_key,0,255,trace_flags,p,2);
+}
+static void trace_bad_command(const uint8_t *p) {
+    trace_cmd=trace_block=trace_key=255; trace_flags=0;
+    access_trace_event(1,255,255,255,3,255,0,p,4);
+}
+static void trace_response(uint8_t value) {
+    access_trace_event(2,trace_cmd,trace_block,trace_key,
+                       value==ACK_VALUE?1:(value==NAK_CRC_PARITY_ERROR_TBIV?3:2),
+                       value,trace_flags,NULL,0);
+}
+static void trace_plain_nbit(uint8_t value, uint8_t bits) {
+    if(bits==4) trace_response(value);
+    nfc_tag_14a_tx_nbit(value,bits);
+}
+
 void mf1_response_4bit_auto_encrypt(uint8_t value) {
+    trace_response(value);
 #ifdef NFC_MF1_FAST_SIM
     nfc_tag_14a_tx_nbit(value ^ Crypto1Nibble(), 4);
 #else
@@ -587,6 +610,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
         case MF1_STATE_UNAUTHENTICATED: {    // Unparalleled state, communication is open
             if (szDataBits == 32) {    // 32 -bit, may be instructions
                 if (nfc_tag_14a_checks_crc(p_data, 4)) {
+                    trace_request(p_data, m_mf1_state == MF1_STATE_AUTHENTICATED);
                     switch (p_data[0]) {
                         case CMD_AUTH_A:
                         case CMD_AUTH_B: {
@@ -595,6 +619,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
 
                             // The type of current emulation card is not enough to support the access of the card reader
                             if (check_block_max_overflow(BlockAuth)) {
+                                access_trace_event(3,trace_cmd,trace_block,trace_key,2,255,trace_flags,NULL,0);
                                 break;
                             }
 
@@ -664,6 +689,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                             crypto1_word(pcs, bytes_to_num(UID_BY_CASCADE_LEVEL, 4) ^ bytes_to_num(CardNonce, 4), 0);
 #endif
                             // Responsible for clear -scale random number to read the card reader
+                            access_trace_event(2,trace_cmd,trace_block,trace_key,1,255,trace_flags,CardNonce,4);
                             nfc_tag_14a_tx_bytes(m_tag_tx_buffer.tx_raw_buffer, 4, false);
                             break;
                         }
@@ -672,9 +698,10 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                             if (m_gen1a_state == GEN1A_STATE_UNLOCKED_RW_WAIT) {
                                 CurrentAddress = p_data[1];
                                 memcpy(m_tag_tx_buffer.tx_raw_buffer, m_tag_information->memory[CurrentAddress], NFC_TAG_MF1_DATA_SIZE);
+                                access_trace_event(2,CMD_READ,CurrentAddress,255,1,255,2,m_tag_tx_buffer.tx_raw_buffer,16);
                                 nfc_tag_14a_tx_bytes(m_tag_tx_buffer.tx_raw_buffer, NFC_TAG_MF1_DATA_SIZE, true);
                             } else {
-                                nfc_tag_14a_tx_nbit(NAK_INVALID_OPERATION_TBIV, 4);
+                                trace_plain_nbit(NAK_INVALID_OPERATION_TBIV, 4);
                                 nfc_tag_mf1_reset_handler();
                             }
                             break;
@@ -686,9 +713,9 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                                 CurrentAddress = p_data[1];
                                 m_gen1a_state = GEN1A_STATE_WRITING;
                                 // Responsive ACK, let the read head continue the next step data to come over
-                                nfc_tag_14a_tx_nbit(ACK_VALUE, 4);
+                                trace_plain_nbit(ACK_VALUE, 4);
                             } else {
-                                nfc_tag_14a_tx_nbit(NAK_INVALID_OPERATION_TBIV, 4);
+                                trace_plain_nbit(NAK_INVALID_OPERATION_TBIV, 4);
                                 nfc_tag_mf1_reset_handler();
                             }
                             break;
@@ -696,19 +723,21 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                         default: {
                             // When the state is not verified, read and write cards directly when the back door mode is turned on
                             // In addition to initiating verification instructions, the others can do nothing
-                            nfc_tag_14a_tx_nbit(NAK_INVALID_OPERATION_TBIV, 4);
+                            trace_plain_nbit(NAK_INVALID_OPERATION_TBIV, 4);
                             nfc_tag_mf1_reset_handler();
                             break;
                         }
                     }
                 } else {
+                    trace_bad_command(p_data);
                     // CRC verification abnormal
-                    nfc_tag_14a_tx_nbit(NAK_CRC_PARITY_ERROR_TBIV, 4);
+                    trace_plain_nbit(NAK_CRC_PARITY_ERROR_TBIV, 4);
                     nfc_tag_mf1_reset_handler();
                     return;
                 }
             } else {
                 if (szDataBits == 144 && m_gen1a_state == GEN1A_STATE_WRITING) {
+                    access_trace_event(4,CMD_WRITE,CurrentAddress,255,0,255,2,p_data,16);
                     // Determine that we are written into the block operation under the Gen1a mode
                     if (nfc_tag_14a_checks_crc(p_data, NFC_TAG_MF1_FRAME_SIZE)) {
                         // The data verification passes, we need to put the data sent in RAM
@@ -716,10 +745,10 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                         // Restore the Gen1A special state machine for waiting operation status
                         m_gen1a_state = GEN1A_STATE_UNLOCKED_RW_WAIT;
                         // Reply to read head ACK, complete the writing operation
-                        nfc_tag_14a_tx_nbit(ACK_VALUE, 4);
+                        trace_plain_nbit(ACK_VALUE, 4);
                     } else {
                         // The transmitted CRC verification is abnormal, and you cannot continue writing
-                        nfc_tag_14a_tx_nbit(NAK_CRC_PARITY_ERROR_TBIV, 4);
+                        trace_plain_nbit(NAK_CRC_PARITY_ERROR_TBIV, 4);
                         nfc_tag_mf1_reset_handler();
                     }
                 } else {
@@ -759,6 +788,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                     m_tag_tx_buffer.tx_raw_buffer[1] = CardResponse[1];
                     m_tag_tx_buffer.tx_raw_buffer[2] = CardResponse[2];
                     m_tag_tx_buffer.tx_raw_buffer[3] = CardResponse[3];
+                    access_trace_event(3,trace_cmd,trace_block,trace_key,1,255,trace_flags,CardResponse,4);
                     //Encryption and calculation of the puppet school inspection
 #ifdef NFC_MF1_FAST_SIM
                     Crypto1ByteArrayWithParity(m_tag_tx_buffer.tx_raw_buffer, m_tag_tx_buffer.tx_bit_parity, 4);
@@ -773,11 +803,13 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                     nfc_tag_14a_tx_bits(m_tag_tx_buffer.tx_warp_frame, m_tag_tx_buffer.tx_frame_bit_size);
                 } else {
                     // Temporary only stored verification failed logs
+                    access_trace_event(3,trace_cmd,trace_block,trace_key,4,255,trace_flags,NULL,0);
                     append_mf1_auth_log_step3(false);
                     // Verification failure, reset the status machine
                     nfc_tag_mf1_reset_handler();
                 }
             } else {
+                access_trace_event(3,trace_cmd,trace_block,trace_key,3,255,trace_flags,NULL,0);
                 // The length of the data sent by the reading head during the verification process is wrong, it must be a problem
                 // We can only reset the status machine and wait for the operation instructions to re -initiate
                 nfc_tag_mf1_reset_handler();
@@ -795,6 +827,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
 #endif
                 // After the decryption is completed, check whether the CRC is correct, and we must ensure that the data coming over is correct!
                 if (nfc_tag_14a_checks_crc(p_data, 4)) {
+                    trace_request(p_data, m_mf1_state == MF1_STATE_AUTHENTICATED);
                     switch (p_data[0]) {
                         case CMD_READ: {
                             // Save the block address of the current operation
@@ -836,6 +869,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                                 }
                             }
 
+                            access_trace_event(2,CMD_READ,CurrentAddress,KeyInUse,1,255,trace_flags,m_tag_tx_buffer.tx_raw_buffer,16);
                             // In any case, the data of the reply must be calculated CRC
                             nfc_tag_14a_append_crc(m_tag_tx_buffer.tx_raw_buffer, NFC_TAG_MF1_DATA_SIZE);
                             // Reply and calculate the coupling school inspection to reply to the card reader
@@ -955,6 +989,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
 
                             // The type of current emulation card is not enough to support the access of the card reader
                             if (check_block_max_overflow(BlockAuth)) {
+                                access_trace_event(3,trace_cmd,trace_block,trace_key,2,255,trace_flags,NULL,0);
                                 break;
                             }
 
@@ -1031,6 +1066,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                             num_to_bytes(bytes_to_num(UID_BY_CASCADE_LEVEL, 4) ^ bytes_to_num(CardNonce, 4), 4, m_auth_nt_keystream);
                             mf_crypto1_encryptEx(pcs, CardNonce, m_auth_nt_keystream, m_tag_tx_buffer.tx_raw_buffer, 4, m_tag_tx_buffer.tx_bit_parity);
 #endif
+                            access_trace_event(2,trace_cmd,trace_block,trace_key,1,255,trace_flags,CardNonce,4);
                             // In the case of nested verification, after the frame is set up, a encrypted random number is replied, and the puppet school inspection does not bring CRC
                             m_tag_tx_buffer.tx_frame_bit_size = nfc_tag_14a_wrap_frame(m_tag_tx_buffer.tx_raw_buffer, 32, m_tag_tx_buffer.tx_bit_parity, m_tag_tx_buffer.tx_warp_frame);
                             nfc_tag_14a_tx_bits(m_tag_tx_buffer.tx_warp_frame, m_tag_tx_buffer.tx_frame_bit_size);
@@ -1057,6 +1093,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
                         }
                     }
                 } else {
+                    trace_bad_command(p_data);
                     // CRC is wrong, return the error code notification
                     mf1_response_4bit_auto_encrypt(NAK_CRC_PARITY_ERROR_TBIV);
                     nfc_tag_mf1_reset_handler();
@@ -1080,6 +1117,10 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
 #else
                 mf_crypto1_decryptEx(pcs, p_data, NFC_TAG_MF1_FRAME_SIZE, p_data);
 #endif
+                trace_flags &= 3;
+                if(m_tag_information->config.mode_block_write==NFC_TAG_MF1_WRITE_DECEIVE) trace_flags|=4;
+                if(m_tag_information->config.mode_block_write==NFC_TAG_MF1_WRITE_SHADOW) trace_flags|=8;
+                access_trace_event(4,CMD_WRITE,CurrentAddress,KeyInUse,0,255,trace_flags,p_data,16);
                 //The CRC that checks the data, ensure that the data received again is correct
                 if (nfc_tag_14a_checks_crc(p_data, NFC_TAG_MF1_FRAME_SIZE)) {
                     // Do not judge the current writing mode here to control the writing mode
@@ -1136,6 +1177,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
 #else
                 mf_crypto1_decryptEx(pcs, p_data, MEM_VALUE_SIZE + NFC_TAG_14A_CRC_LENGTH, p_data);
 #endif
+                access_trace_event(4,trace_cmd,CurrentAddress,KeyInUse,0,255,trace_flags,p_data,4);
                 // After decomposition, CRC must be verified to avoid using error data
                 if (nfc_tag_14a_checks_crc(p_data, MEM_VALUE_SIZE + NFC_TAG_14A_CRC_LENGTH)) {
                     // Copy a piece of data first to the global buffer zone

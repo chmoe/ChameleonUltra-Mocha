@@ -16,6 +16,7 @@ with zipfile.ZipFile(path) as z:
     assert set(manifest)=={'application'}, 'must not include bootloader or SoftDevice'
     entry=manifest['application']; binary=z.read(entry['bin_file']); packet=InitPacketPB(from_bytes=z.read(entry['dat_file']))
     init=packet.packet.signed_command.command.init
+    assert len(binary) <= 0x50000, 'application exceeds conservative 320 KiB dual-bank/FDS bound'
     assert init.hw_version==0 and list(init.sd_req)==[0x100]
     assert init.fw_version==1 and init.app_size==len(binary)
     assert init.sd_size==0 and init.bl_size==0 and not init.is_debug

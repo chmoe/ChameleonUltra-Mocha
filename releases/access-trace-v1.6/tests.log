@@ -1,0 +1,7 @@
+.................usage: python -m unittest trace-clear [-h] --confirm
+python -m unittest trace-clear: error: the following arguments are required: --confirm
+........
+----------------------------------------------------------------------
+Ran 25 tests in 4.814s
+
+OK

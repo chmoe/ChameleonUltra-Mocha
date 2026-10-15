@@ -8,6 +8,9 @@
 NRF_LOG_MODULE_REGISTER();
 
 
+static bool trace_gc_active;
+void fds_util_trace_gc(bool active) { trace_gc_active = active; }
+
 // current write record info
 static struct {
     uint32_t record_id; // record id, used for sync delete
@@ -194,6 +197,11 @@ static bool is_peer_manager_record(uint16_t id_or_key) {
  *FDS event callback
  */
 static void fds_evt_handler(fds_evt_t const *p_evt) {
+    if (p_evt->id == FDS_EVT_DEL_RECORD && p_evt->del.file_id == 0x1300) return;
+    if (p_evt->id == FDS_EVT_GC && trace_gc_active) return;
+    // Trace has its own error-aware completion handler.
+    if ((p_evt->id == FDS_EVT_WRITE || p_evt->id == FDS_EVT_UPDATE) &&
+        (p_evt->write.file_id == 0x1300 || p_evt->write.file_id == 0x1301)) return;
     // Skip peermanager event
     if (fds_operation_info.ignore_pm && (
                 is_peer_manager_record(p_evt->write.record_key)

@@ -10,6 +10,7 @@ int fds_delete_sync(uint16_t id, uint16_t key);
 bool fds_is_exists(uint16_t id, uint16_t key);
 void fds_util_init(void);
 void fds_gc_sync(void);
+void fds_util_trace_gc(bool active);
 bool fds_wipe(void);
 
 #endif

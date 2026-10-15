@@ -39,6 +39,7 @@ typedef enum {
     SettingsButtonTogglePolling = 6U,
     // Restart into the bootloader (DFU mode)
     SettingsButtonEnterDfuMode = 7U,
+    SettingsButtonToggleAccessTrace = 8U,
 } settings_button_function_t;
 
 typedef struct ALIGN_U32 {

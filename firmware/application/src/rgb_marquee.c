@@ -4,6 +4,7 @@
 #include "bsp_delay.h"
 #include "rgb_marquee.h"
 #include "bsp_time.h"
+#include "rfid_main.h"
 
 
 #define NRF_LOG_MODULE_NAME rgb
@@ -40,12 +41,25 @@ extern bool g_usb_led_marquee_enable;
 
 // PWM ownership is explicit: foreground and USB transitions can stop repeatedly
 // without calling nrfx stop/uninit on an uninitialized instance.
+static bool trace_working, trace_pending, trace_forward;
+static uint8_t trace_step;
+/* Physical LED1..LED8 color pairs; RGB pins are active-low. */
+static const uint16_t trace_rgb[8][3] = {
+    {1000,0,0}, {1000,251,0}, {1000,1000,0}, {0,1000,0},
+    {0,1000,1000}, {0,0,1000}, {1000,0,1000}, {1000,1000,1000}
+};
 static bool m_pwm_initialized;
 static void rgb_pwm_uninit(void) {
     if (!m_pwm_initialized) return;
     nrfx_pwm_stop(&pwm0_ins, true);
     nrfx_pwm_uninit(&pwm0_ins);
     m_pwm_initialized = false;
+}
+static void trace_pwm_uninit(void) {
+    if(!m_pwm_initialized) return;
+    nrfx_pwm_stop(&pwm0_ins,false);
+    nrfx_pwm_uninit(&pwm0_ins); // SDK disables PWM synchronously, without polling.
+    m_pwm_initialized=false;
 }
 static void rgb_pwm_init(nrfx_pwm_handler_t handler) {
     APP_ERROR_CHECK(nrf_drv_pwm_init(&pwm0_ins, &pwm_config, handler));
@@ -58,9 +72,58 @@ void rgb_marquee_init(void) {
 }
 
 void rgb_marquee_stop(void) {
-    rgb_pwm_uninit();//turn off pwm output
+    if(trace_working) {
+        trace_pending=false; trace_pwm_uninit(); // Foreground actions retain priority.
+    } else rgb_pwm_uninit();
+    trace_working=false;
     rgb_marquee_usb_idle_step = 0;
     rgb_marquee_usb_open_step = 0;
+}
+
+void rgb_marquee_trace_start(bool enabled) {
+    if(trace_working) { trace_pwm_uninit(); trace_working=false; light_up_by_slot(); }
+    trace_forward=enabled; trace_step=0; trace_pending=true;
+}
+bool rgb_marquee_trace_pending(void) { return trace_pending; }
+static void trace_show_step(void) {
+    uint32_t *leds=hw_get_led_array();
+    uint8_t physical=trace_forward?trace_step:7-trace_step;
+    for(uint8_t i=0;i<RGB_LIST_NUM;i++) nrf_gpio_pin_clear(leds[i]);
+    pwm_sequ_val.channel_0=trace_rgb[physical][0];
+    pwm_sequ_val.channel_1=trace_rgb[physical][1];
+    pwm_sequ_val.channel_2=trace_rgb[physical][2];
+    pwm_sequ_val.channel_3=0;
+    nrf_gpio_pin_set(leds[physical]);
+    bsp_set_timer(timer,0);
+}
+bool rgb_marquee_trace_process(bool rf_busy) {
+    if(!trace_pending) return false;
+    if(rf_busy) {
+        if(trace_working) {
+            /* Release PWM in main context, never in RF IRQ. Keep current step. */
+            trace_pwm_uninit(); trace_working=false;
+            light_up_by_slot();
+        }
+        return false;
+    }
+    if(!trace_working) {
+        rgb_marquee_stop();
+        pwm_config.output_pins[0]=LED_R | NRF_DRV_PWM_PIN_INVERTED;
+        pwm_config.output_pins[1]=LED_G | NRF_DRV_PWM_PIN_INVERTED;
+        pwm_config.output_pins[2]=LED_B | NRF_DRV_PWM_PIN_INVERTED;
+        pwm_config.output_pins[3]=NRF_DRV_PWM_PIN_NOT_USED;
+        /* Prepare RGB values before starting DMA; select one physical LED. */
+        trace_show_step(); rgb_pwm_init(NULL);
+        nrf_drv_pwm_simple_playback(&pwm0_ins,&seq,1,NRF_DRV_PWM_FLAG_LOOP);
+        trace_working=true;
+    } else if(!NO_TIMEOUT_1MS(timer,79)) {
+        if(++trace_step==8) {
+            trace_pwm_uninit(); trace_working=false; trace_pending=false;
+            light_up_by_slot(); return false;
+        }
+        trace_show_step();
+    }
+    return true;
 }
 
 // reset RGB state machines to force a refresh of the LED color

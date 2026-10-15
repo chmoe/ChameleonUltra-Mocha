@@ -75,6 +75,10 @@ int main(void) {
  settings_set_polling_interval_ms(5000); assert(config.polling_interval_ms==5000);
  settings_set_polling_interval_ms(5001); assert(config.polling_interval_ms==5000);
  settings_save_config(); settings_load_config(); assert(config.polling_interval_ms==5000);
+ settings_set_button_press_config('A',SettingsButtonToggleAccessTrace);
+ settings_set_long_button_press_config('B',SettingsButtonToggleAccessTrace);
+ settings_save_config();settings_load_config();
+ assert(settings_get_button_press_config('a')==8 && settings_get_long_button_press_config('b')==8);
  settings_set_polling_enable(true); fail=true; assert(settings_save_config()==STATUS_FLASH_WRITE_FAIL);
  return 0;
 }''')
@@ -181,7 +185,7 @@ int main(void) {
                 depth+=(text[end]=='{')-(text[end]=='}'); end+=1
             return text[start:end]
         c=(SRC/'rgb_marquee.c').read_text()
-        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_idle','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
+        functions='\n'.join(function(c,n) for n in ['rgb_pwm_uninit','trace_pwm_uninit','rgb_pwm_init','rgb_marquee_stop','rgb_marquee_reset','rgb_marquee_usb_idle','rgb_marquee_usb_open_sweep','rgb_marquee_usb_open_symmetric'])
         self.compile_run({'common.h':COMMON}, '#include "common.h"\n'+r"""
 #define LIGHT_LEVEL_MAX 99
 #define RGB_LIST_NUM 8
@@ -193,6 +197,7 @@ static bool m_pwm_initialized;
 static int pwm0_ins, seq, timer_value, color_value, starts;
 static int *timer=&timer_value;
 static bool g_usb_led_marquee_enable=true;
+static bool trace_working, trace_pending;
 static uint8_t rgb_marquee_usb_idle_step, rgb_marquee_usb_open_step, rgb_marquee_usb_idle_color;
 static unsigned int cleared;
 static void nrf_gpio_pin_clear(uint32_t p) { cleared |= 1u<<p; }

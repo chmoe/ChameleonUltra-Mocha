@@ -7,7 +7,7 @@ MOCHA_SOURCE_REV=${MOCHA_SOURCE_REV:-$(git rev-parse --short=7 HEAD)}
 mkdir -p dist
 make -C firmware/application clean GNU_INSTALL_ROOT="$GNU_INSTALL_ROOT" APP_FW_VER_MAJOR=2 APP_FW_VER_MINOR=2 GIT_VERSION="Mocha-1.0.0-${MOCHA_SOURCE_REV}"
 make -C firmware/application -j8 GNU_INSTALL_ROOT="$GNU_INSTALL_ROOT" APP_FW_VER_MAJOR=2 APP_FW_VER_MINOR=2 CURRENT_DEVICE_TYPE=ultra GIT_VERSION="Mocha-1.0.0-${MOCHA_SOURCE_REV}"
-"$PYTHON" tests/test_host.py
+"$PYTHON" -m unittest discover -s tests -p 'test_*.py'
 "$PYTHON" tools/package_dfu.py
 "$PYTHON" tools/verify_dfu.py
 cp firmware/objects/application.hex dist/mocha-application.hex

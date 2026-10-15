@@ -10,6 +10,7 @@ SRC_FILES += \
   $(SRC_COMMON)/libc_nano_stubs.c \
   $(PROJ_DIR)/app_main.c \
   $(PROJ_DIR)/app_cmd.c \
+  $(PROJ_DIR)/access_trace.c \
   $(PROJ_DIR)/ble_main.c \
   $(PROJ_DIR)/rfid_main.c \
   $(PROJ_DIR)/settings.c \
