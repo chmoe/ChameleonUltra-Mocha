@@ -22,4 +22,4 @@
 
 ## 另一个独立问题
 
-Classic 的 field_off_do_reset 全局运行策略在切换到非 Classic 后未清除。这不属于 rfdiag2 的修复范围，后续代码修复需独立提交，不能声称上述 iPhone 验证已覆盖它。
+Classic 的 field_off_do_reset 全局运行策略在切换到非 Classic 后未清除。源码已在独立提交中修复：每次注册非空卡片处理器时恢复默认关闭，Classic 加载回调随后应用本槽保存的选项；NULL 处理器保留既有无操作行为。不修改持久化配置。新增测试执行真实 Classic/NTAG 加载回调，覆盖 Classic ON→NTAG→Classic ON、Classic ON→Classic OFF→NTAG，以及其他处理器注册。30 项主机测试和 ARM 构建通过。此修改未安装硬件，未获实机验证；已发布的 rfdiag2 固件包不包含此后续修改，上述 iPhone 验证仅适用于 rfdiag2。

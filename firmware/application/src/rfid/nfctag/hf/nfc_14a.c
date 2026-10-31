@@ -826,6 +826,10 @@ void nfc_tag_14a_set_state(nfc_tag_14a_state_t state) {
  */
 void nfc_tag_14a_set_handler(nfc_tag_14a_handler_t *handler) {
     if (handler != NULL) {
+        // This is a per-card runtime policy, not a peripheral lifetime setting.
+        // Classic reapplies its saved option after registering its handler;
+        // other card types must not inherit the previous Classic slot's option.
+        reset_if_field_lost = false;
         // Take it directly to the implementation of the introduction to our global object
         m_tag_handler.cb_reset = handler->cb_reset;
         m_tag_handler.cb_state = handler->cb_state;
