@@ -1,0 +1,22 @@
+{
+  "version": "Mocha-1.0.0-c163649-rfdiag2",
+  "source_commit": "f7703f6f7c139619bb64156fa14810841fc3b88b",
+  "build_version_override": "c163649-rfdiag2",
+  "application_bytes": 320000,
+  "package": "application-only; bootloader and SoftDevice unchanged",
+  "tests_passed": 29,
+  "user_hardware_validation": [
+    "iPhone battery NFC field wake: passed",
+    "manual slot 4/5 switching: passed"
+  ],
+  "card_settings_preservation": "16 slots matched before/after installation",
+  "includes_classic_policy_reset_fix": false,
+  "diagnostic_ring_events": 256,
+  "compiler": "Arm GNU 12.2.Rel1",
+  "packager": "nrfutil 6.1.7 Package API",
+  "sha256": {
+    "mocha-application.bin": "e579ea1dfa41799363f7191889dc4c3f9f05bd0c3f9e844e30648df619ea813e",
+    "mocha-application.hex": "4f6c193e99cbe7799243f9acf74d77f7e4bade5c6e20ce370d1b0b808f1cc062",
+    "mocha-ultra-dfu-app.zip": "c58fdd01004fab3767c36b9d2b9f6d8bba8306acdfcce036684ebdd0dad944db"
+  }
+}
