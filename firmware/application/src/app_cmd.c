@@ -1,4 +1,5 @@
 #include "access_trace.h"
+#include "rf_diag.h"
 #include "fds_util.h"
 #include "bsp_time.h"
 #include "bsp_delay.h"
@@ -230,6 +231,16 @@ static data_frame_tx_t *cmd_processor_set_sleep_timeout(uint16_t cmd, uint16_t s
     }
     settings_set_sleep_timeout(data[0]);
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
+}
+
+static data_frame_tx_t *cmd_processor_rf_event_log(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length != 5 || !data[4] || data[4]>8)
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    uint32_t start=(uint32_t)data[0] | ((uint32_t)data[1]<<8) |
+                   ((uint32_t)data[2]<<16) | ((uint32_t)data[3]<<24);
+    uint8_t payload[16+8*32];
+    uint16_t size=rf_diag_read(start,data[4],payload);
+    return data_frame_make(cmd, STATUS_SUCCESS, size, payload);
 }
 
 static data_frame_tx_t *cmd_processor_get_rf_diagnostics(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
@@ -3321,6 +3332,7 @@ static cmd_data_map_t m_data_cmd_map[] = {
     { 1124, NULL, cmd_processor_access_trace, NULL },
     { 1125, NULL, cmd_processor_access_trace, NULL },
 
+    { DATA_CMD_GET_RF_EVENT_LOG, NULL, cmd_processor_rf_event_log, NULL },
     { DATA_CMD_GET_RF_DIAGNOSTICS, NULL, cmd_processor_get_rf_diagnostics, NULL },
     { DATA_CMD_GET_STARTUP_DIAGNOSTICS, NULL, cmd_processor_get_startup_diagnostics, NULL },
     { DATA_CMD_GET_MOCHA_IDENTITY, NULL, cmd_processor_get_mocha_identity, NULL },

@@ -1,4 +1,5 @@
 #include "access_trace.h"
+#include "rf_diag.h"
 #include <hal/nrf_nfct.h>
 #include <nrfx_nfct.h>
 #include <nrf_gpio.h>
@@ -105,6 +106,23 @@ static uint8_t m_nfc_tx_buffer[MAX_NFC_TX_BUFFER_SIZE] = { 0x00 };
 static uint8_t m_uid_incomplete_sak[] = { 0x04, 0xda, 0x17 };
 // Reset nfc peripheral after field lost?
 static bool reset_if_field_lost = false; // default is 'false', Unless there is a genuine need for a reset.
+static void rf_event(uint8_t kind, const uint8_t *data, uint16_t bits) {
+    rf_diag_record(kind, tag_emulation_get_slot(), m_tag_state_14a,
+                   NRF_NFCT->NFCTAGSTATE, data, bits);
+}
+
+static void nfc_tag_14a_rearm_retained_receiver(void) {
+    // FIELD_LOST masks RX but the driver retains activation for 3 seconds.
+    // ACTIVATE on an already-idle NFCT need not emit another READY edge.
+    // Disabled/RampUp must wait for READY; never replace DMA during RX/TX.
+    if (!m_polling_rx_paused &&
+            NRF_NFCT->NFCTAGSTATE == NFCT_NFCTAGSTATE_NFCTAGSTATE_Idle) {
+        m_is_responded = false;
+        NRFX_NFCT_RX_BYTES
+        rf_event(RF_DIAG_REARM, NULL, 0);
+    }
+}
+
 
 
 /**
@@ -292,7 +310,8 @@ uint8_t nfc_tag_14a_unwrap_frame(const uint8_t *pbtFrame, const size_t szFrameBi
         }                                                                                                        \
         NRF_NFCT->TXD.FRAMECONFIG = reg;                                                                         \
         NRF_NFCT->INTENSET = (NRF_NFCT_INT_TXFRAMESTART_MASK | NRF_NFCT_INT_TXFRAMEEND_MASK);                    \
-        NRF_NFCT->TASKS_STARTTX = 1;                                                                             \
+        NRF_NFCT->TASKS_STARTTX = 1; \
+        rf_event(RF_DIAG_TX_REQUEST, m_nfc_tx_buffer, bytes * 8);                                                                             \
     } while(0);                                                                                                  \
 
 
@@ -321,7 +340,8 @@ void nfc_tag_14a_tx_bytes(uint8_t *data, uint32_t bytes, bool appendCrc) {
         NRF_NFCT->INTENSET = (NRF_NFCT_INT_TXFRAMESTART_MASK | NRF_NFCT_INT_TXFRAMEEND_MASK);   \
         NRF_NFCT->FRAMEDELAYMODE = mode;                                                        \
         NRF_NFCT->TXD.FRAMECONFIG = NFCT_TXD_FRAMECONFIG_SOF_Msk;                               \
-        NRF_NFCT->TASKS_STARTTX = 1;                                                            \
+        NRF_NFCT->TASKS_STARTTX = 1; \
+        rf_event(RF_DIAG_TX_REQUEST, m_nfc_tx_buffer, bits);                                                            \
     } while(0);                                                                                 \
 
 /**@brief The function of sending the BIT stream, this implementation automatically sends SOF
@@ -386,6 +406,7 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
     }
 #endif
 
+    rf_event(RF_DIAG_RX, p_data, szDataBits);
     // Start processing the received data, if it is a special frame, you can hand over the data to this link
     if (szDataBits <= 8) {
         // We may receive a Wupa or REQA instruction, or other special instructions
@@ -666,6 +687,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
     // Select action to process.
     switch (p_event->evt_id) {
         case NRFX_NFCT_EVT_FIELD_DETECTED: {
+            rf_event(RF_DIAG_FIELD_ON, NULL, 0);
             access_trace_field(true);
             m_diag_detected++;
             polling_note_hf_field(true);
@@ -690,14 +712,18 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             NRF_NFCT->TASKS_ACTIVATE = 1;
 #endif
 
-            // Activation is asynchronous on nRF52840; READY arms reception.
+            // Fresh activation waits for READY. Retained activation may
+            // have no new READY edge, so restore RX only when already idle.
+            nfc_tag_14a_rearm_retained_receiver();
             break;
         }
         case NRFX_NFCT_EVT_READY: {
+            rf_event(RF_DIAG_READY, NULL, 0);
             NRFX_NFCT_RX_BYTES
             break;
         }
         case NRFX_NFCT_EVT_FIELD_LOST: {
+            rf_event(RF_DIAG_FIELD_OFF, NULL, 0);
             access_trace_field(false);
             m_diag_lost++;
             polling_note_hf_field(false);
@@ -719,6 +745,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_TX_FRAMESTART: {
+            rf_event(RF_DIAG_TX_START, m_nfc_tx_buffer, nrf_nfct_tx_bits_get());
             // NRF_LOG_INFO("TX start.\n");
             if (m_tx_sniff_cb != NULL) {
                 uint32_t amt  = NRF_NFCT->TXD.AMOUNT;
@@ -731,6 +758,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_TX_FRAMEEND: {
+            rf_event(RF_DIAG_TX_END, NULL, 0);
             // NRF_LOG_INFO("TX end.\n");
             // After the transmission is over, you need to be able to receive it
             NRFX_NFCT_RX_BYTES
@@ -760,6 +788,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             // According to the error reasons, the log prints to help the development of the possibilities during development
             switch (p_event->params.error.reason) {
                 case NRFX_NFCT_ERROR_FRAMEDELAYTIMEOUT: {
+                    rf_event(RF_DIAG_TIMEOUT, NULL, 0);
                     //If we respond to the label in the communication window, but we did not respond in time, then we need to make an error printing
                     // If this error appears very frequently, it may be that the MCU processing speed does not keep up. At this time, the developer needs to optimize the code
                     if (m_is_responded) {
@@ -824,6 +853,7 @@ void nfc_tag_14a_sense_switch(bool enable) {
             if (nrfx_nfct_init(&nnct) != NRFX_SUCCESS) {
                 NRF_LOG_INFO("Cannot setup NFC!");
             }
+            rf_event(RF_DIAG_SENSE_ON, NULL, 0);
             // Starting field sensing
             nrfx_nfct_enable();
         }
@@ -832,6 +862,7 @@ void nfc_tag_14a_sense_switch(bool enable) {
             m_nfc_sense_state = NFC_SENSE_STATE_DISABLE;
             //Directly anti -initialization NFC peripherals can turn off NFC field induction
             // SDK inside us to call us nrfx_nfct_disable
+            rf_event(RF_DIAG_SENSE_OFF, NULL, 0);
             nrfx_nfct_uninit();
             rf_clock_release(RF_CLOCK_HF);
             m_polling_rx_paused = false;
